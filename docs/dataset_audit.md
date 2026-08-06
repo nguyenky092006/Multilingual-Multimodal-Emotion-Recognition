@@ -34,4 +34,3 @@ There is no verified drop-in dataset that simultaneously provides unrestricted E
 and Mandarin, real audio/text/video, clean speaker IDs, and an unconfounded acquisition
 protocol. The initial code therefore consumes a neutral manifest, works without real
 data, and makes cross-corpus limitations observable rather than hiding them.
-

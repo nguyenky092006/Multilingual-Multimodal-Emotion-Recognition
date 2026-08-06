@@ -56,4 +56,3 @@ class ReliabilityGatedFusion(nn.Module):
         weights = masked_softmax(torch.stack(scores, dim=1), modality_mask, dim=1)
         fused = (representations * weights.unsqueeze(-1)).sum(dim=1)
         return fused, weights
-

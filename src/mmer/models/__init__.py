@@ -3,4 +3,3 @@
 from .trimodal import TrimodalEmotionModel
 
 __all__ = ["TrimodalEmotionModel"]
-

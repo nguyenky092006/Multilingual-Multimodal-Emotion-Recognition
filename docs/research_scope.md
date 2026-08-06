@@ -51,4 +51,3 @@ is therefore cross-corpus:
 
 ESD can be a bilingual audio-plus-text control because its English and Mandarin subsets
 share a protocol. It is not a trimodal dataset and cannot supply visual evidence.
-

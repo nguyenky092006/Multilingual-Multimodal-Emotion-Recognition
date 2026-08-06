@@ -17,4 +17,3 @@ visual:
   frames_per_clip: 8
   pooling: masked_mean
   face_crop: false
-

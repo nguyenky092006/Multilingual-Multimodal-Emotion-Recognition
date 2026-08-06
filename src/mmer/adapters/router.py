@@ -86,4 +86,3 @@ class AdapterRouter(nn.Module):
             "collapse_detected": bool(all_norms and max(all_norms) < 1e-8),
         }
         return output, stats
-

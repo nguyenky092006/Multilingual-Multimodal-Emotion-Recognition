@@ -142,4 +142,3 @@ def parameter_counts(module: nn.Module) -> dict[str, float | int]:
         "trainable": trainable,
         "trainable_percent": 100.0 * trainable / total if total else 0.0,
     }
-

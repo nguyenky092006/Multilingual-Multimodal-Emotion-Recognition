@@ -26,4 +26,3 @@ def load_label_mapping(path: str | Path) -> dict[str, int]:
     if sorted(mapping.values()) != list(range(len(mapping))):
         raise ValueError("label indices must be contiguous from zero")
     return mapping
-

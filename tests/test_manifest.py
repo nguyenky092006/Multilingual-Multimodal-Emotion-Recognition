@@ -88,4 +88,3 @@ def test_all_missing_modalities_rejected():
     record = sample(transcript=None, text_available=False)
     report = validate_manifest([record], LABELS, check_files=False)
     assert "no_available_modality" in {issue.code for issue in report.serious}
-

@@ -62,4 +62,3 @@ No pretrained weights were downloaded during this audit.
 
 No external code is reused. All interfaces, adapters, fusion, validation, metrics, and
 synthetic data code in this repository are clean-room implementations. See `NOTICE.md`.
-

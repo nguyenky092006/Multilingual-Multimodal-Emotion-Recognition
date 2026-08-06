@@ -21,4 +21,3 @@ def describe_encoder(modality: str, config: Mapping[str, Any], dry_run: bool) ->
             "then implement the verified dataset-specific extractor in iteration 2."
         )
     return details
-

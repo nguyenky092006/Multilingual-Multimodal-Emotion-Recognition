@@ -23,4 +23,3 @@ def cache_main(modality: str) -> int:
         print(str(exc))
         return 2
     return 0
-

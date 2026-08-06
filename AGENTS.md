@@ -9,4 +9,3 @@
 - Frozen encoders and cache extraction are separate from adapter/fusion training.
 - Tests and the CPU smoke run must stay offline and deterministic.
 - ProtoNet and federated learning are intentionally outside the first implementation.
-

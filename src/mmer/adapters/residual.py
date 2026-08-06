@@ -25,4 +25,3 @@ class ResidualAdapter(nn.Module):
 
     def forward(self, hidden: Tensor) -> Tensor:
         return hidden + self.delta(hidden)
-

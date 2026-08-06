@@ -11,4 +11,3 @@ presets:
   P1: {modalities: [audio, text, visual], fusion: concat, routed_adapters: true}
   P2: {modalities: [audio, text, visual], fusion: reliability, routed_adapters: true}
   P3: {extends: P2, meta_learning: prototypical, status: future}
-

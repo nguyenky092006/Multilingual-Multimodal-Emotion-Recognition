@@ -89,4 +89,3 @@ def evaluate_model(
     )
     metrics["unavailable_weight_max"] = float(weights.masked_select(~modality_masks).abs().max()) if (~modality_masks).any() else 0.0
     return metrics
-

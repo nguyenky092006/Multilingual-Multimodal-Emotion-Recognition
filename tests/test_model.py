@@ -46,4 +46,3 @@ def test_parameter_matched_separate_emotion_adapters():
     network = TrimodalEmotionModel(DIMS, 4, ["en"], ["a"], 16, 24, 4, 0.0, "concat", False)
     output = network(inputs(1), torch.ones(1, 3, dtype=torch.bool), ["en"], ["a"], torch.ones(1, 3))
     assert output["logits"].shape == (1, 4)
-

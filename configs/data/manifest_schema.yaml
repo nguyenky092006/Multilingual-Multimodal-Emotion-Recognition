@@ -21,4 +21,3 @@ optional_nullable_fields:
   accent: string
   source_video_id: string
 modality_order: [audio, text, visual]
-

@@ -37,4 +37,3 @@ All utterances from a speaker and original source video stay in one split. With 
 media, group by source dialogue/episode as well. Any unavoidable language–corpus
 confounding is documented and evaluated through corpus-held-out slices, never presented
 as a clean language causal effect.
-

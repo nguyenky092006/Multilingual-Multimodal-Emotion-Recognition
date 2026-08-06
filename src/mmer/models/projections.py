@@ -27,4 +27,3 @@ class TextProjection(ModalityProjection):
 
 class VisualProjection(ModalityProjection):
     pass
-

@@ -27,4 +27,3 @@ model:
   languages: [en, zh]
   corpora: [synthetic_a, synthetic_b]
 labels_path: configs/data/labels.yaml
-

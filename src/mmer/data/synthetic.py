@@ -64,4 +64,3 @@ def make_synthetic_dataset(
             )
         )
     return CachedEmbeddingDataset(examples)
-

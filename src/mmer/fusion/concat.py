@@ -26,4 +26,3 @@ class ConcatenationFusion(nn.Module):
         weights = modality_mask.to(representations.dtype)
         weights = weights / weights.sum(dim=1, keepdim=True)
         return fused, weights
-

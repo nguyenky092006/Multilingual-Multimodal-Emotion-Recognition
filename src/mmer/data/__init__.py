@@ -11,4 +11,3 @@ __all__ = [
     "validate_manifest",
     "write_manifest",
 ]
-

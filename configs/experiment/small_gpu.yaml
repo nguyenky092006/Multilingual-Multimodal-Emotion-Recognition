@@ -19,4 +19,3 @@ model:
   shared_adapter: true
   routing_alpha: 0.5
 labels_path: configs/data/labels.yaml
-

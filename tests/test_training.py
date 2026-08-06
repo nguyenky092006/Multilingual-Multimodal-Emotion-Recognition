@@ -45,4 +45,3 @@ def test_one_cpu_training_and_evaluation_step():
     metrics = evaluate_model(network, loader, torch.device("cpu"), 4)
     assert set(("uar", "macro_f1", "accuracy", "fusion_weight_summary")) <= set(metrics)
     assert metrics["unavailable_weight_max"] == 0.0
-

@@ -47,4 +47,3 @@ def classification_metrics(
         "confusion_matrix": matrix.to(torch.long).tolist(),
         "support": support.to(torch.long).tolist(),
     }
-

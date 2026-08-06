@@ -25,4 +25,3 @@ def test_router_maps_unknown_routes_explicitly():
     assert stats["language_usage"] == {"unknown": 2}
     assert stats["corpus_usage"] == {"unknown": 2}
     assert isinstance(stats["collapse_detected"], bool)
-
