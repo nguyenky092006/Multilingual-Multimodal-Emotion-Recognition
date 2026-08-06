@@ -1,0 +1,20 @@
+audio:
+  identifier: facebook/wav2vec2-xls-r-300m
+  frozen: true
+  sample_rate: 16000
+  pooling: masked_mean
+  hidden_layer: -1
+  max_duration_seconds: 12.0
+text:
+  identifier: Qwen/Qwen3-Embedding-0.6B
+  fallback_identifier: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  frozen: true
+  pooling: last_token
+  preserve_original_language: true
+visual:
+  identifier: google/siglip-base-patch16-224
+  frozen: true
+  frames_per_clip: 8
+  pooling: masked_mean
+  face_crop: false
+

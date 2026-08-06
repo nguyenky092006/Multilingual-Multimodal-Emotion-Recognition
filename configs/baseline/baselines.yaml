@@ -1,0 +1,14 @@
+presets:
+  B1-A: {modalities: [audio], fusion: concat, adapters: false}
+  B1-T: {modalities: [text], fusion: concat, adapters: false}
+  B1-V: {modalities: [visual], fusion: concat, adapters: false}
+  B2-AT: {modalities: [audio, text], fusion: concat, adapters: false}
+  B2-AV: {modalities: [audio, visual], fusion: concat, adapters: false}
+  B2-TV: {modalities: [text, visual], fusion: concat, adapters: false}
+  B3: {modalities: [audio, text, visual], fusion: concat, adapters: false}
+  B4: {modalities: [audio, text, visual], fusion: concat, route_embeddings: true}
+  B5: {modalities: [audio, text, visual], fusion: concat, parameter_matched_shared: true}
+  P1: {modalities: [audio, text, visual], fusion: concat, routed_adapters: true}
+  P2: {modalities: [audio, text, visual], fusion: reliability, routed_adapters: true}
+  P3: {extends: P2, meta_learning: prototypical, status: future}
+

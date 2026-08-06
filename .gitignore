@@ -1,0 +1,39 @@
+# Private/reference material (never commit without an explicit license review)
+references/source/
+
+# Data, cached embeddings, model artifacts, and experiment outputs
+data/
+cache/
+outputs/*
+!outputs/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local.yaml
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

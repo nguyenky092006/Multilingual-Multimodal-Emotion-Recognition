@@ -1,0 +1,22 @@
+experiment_name: cached_small_gpu
+seed: 17
+device: cuda
+epochs: 30
+batch_size: 64
+learning_rate: 0.001
+weight_decay: 0.0001
+gradient_accumulation_steps: 2
+mixed_precision: true
+modality_dropout: 0.15
+output_dir: outputs/small_gpu
+manifest_path: data/manifests/train.jsonl
+model:
+  d_model: 256
+  projection_hidden: 512
+  adapter_bottleneck: 64
+  dropout: 0.2
+  fusion: reliability
+  shared_adapter: true
+  routing_alpha: 0.5
+labels_path: configs/data/labels.yaml
+

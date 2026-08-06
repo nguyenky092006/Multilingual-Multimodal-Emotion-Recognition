@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmer"
+version = "0.1.0"
+description = "Language-aware adapters for cached multilingual trimodal emotion representations"
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = {text = "Research-only project; third-party datasets retain their own terms"}
+dependencies = [
+  "numpy>=1.24",
+  "PyYAML>=6.0",
+  "torch>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+encoders = [
+  "transformers>=4.51",
+  "sentence-transformers>=3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

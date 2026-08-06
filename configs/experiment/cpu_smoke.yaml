@@ -1,0 +1,30 @@
+experiment_name: synthetic_cpu_smoke
+seed: 17
+device: cpu
+epochs: 2
+batch_size: 16
+learning_rate: 0.003
+weight_decay: 0.0001
+modality_dropout: 0.15
+output_dir: outputs/smoke
+data:
+  synthetic: true
+  train_samples: 96
+  validation_samples: 32
+  test_samples: 32
+  input_dims:
+    audio: 12
+    text: 10
+    visual: 8
+model:
+  d_model: 32
+  projection_hidden: 48
+  adapter_bottleneck: 8
+  dropout: 0.1
+  fusion: reliability
+  shared_adapter: true
+  routing_alpha: 0.5
+  languages: [en, zh]
+  corpora: [synthetic_a, synthetic_b]
+labels_path: configs/data/labels.yaml
+
