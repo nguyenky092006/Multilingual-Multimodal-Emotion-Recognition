@@ -14,10 +14,13 @@
 8. Train an offline classifier, compute UAR/macro-F1/accuracy, save a reproducibility
    bundle, reload the checkpoint, and run offline CPU tests.
 
-## Iteration 2 — requires explicit approval and real data
+## Iteration 2 — in progress with explicit approval and real data
 
-- Implement XLS-R waveform cache extraction, Qwen3 text cache extraction, and a verified
-  frame encoder cache extractor after model-download approval.
+- Implemented frozen XLS-R waveform cache extraction with pinned SafeTensor weights,
+  masked-mean pooling, per-sample source hashes/quality metadata, atomic writes, resume,
+  and a verified 648-clip CREMA-D pilot.
+- Implement Qwen3 text cache extraction and a verified frame encoder cache extractor only
+  after their separate model-download approvals.
 - Create corpus converters only for datasets the user has obtained legally.
 - Establish speaker/source-video group splits and run within-/cross-corpus baselines.
 

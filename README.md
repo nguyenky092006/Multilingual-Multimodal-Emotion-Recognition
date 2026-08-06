@@ -96,9 +96,22 @@ python scripts/cache_text_embeddings.py --dry-run
 python scripts/cache_visual_embeddings.py --dry-run
 ```
 
-Without `--dry-run`, these commands deliberately stop and request approval. Full extractors
-are dataset-specific iteration-2 work because XLS-R, Qwen3 Embedding, and SigLIP weights are
-large and real media access/licensing must first be established. There is no silent fallback.
+Text and visual commands still stop without `--dry-run` because Qwen3 Embedding and SigLIP
+require separate download and implementation approval. The audio command has an approved
+CREMA-D implementation, but it cannot access the network unless `--allow-download` is given.
+There is no silent fallback.
+
+The approved CREMA-D XLS-R extractor is implemented with resumable per-sample SafeTensor
+caches. Inspect a 16-clip canary without loading or downloading a model:
+
+```powershell
+python scripts/cache_audio_embeddings.py --dry-run --limit 16
+```
+
+Only after explicit approval, add `--allow-download` to that canary command. When it passes,
+rerun without `--limit` and without `--allow-download` to complete the 648-clip pilot from
+locally cached weights. See `docs/audio_cache_protocol.md` for the cache contract. Text and
+visual extraction remain guarded until they receive separate approval and tests.
 
 ## Architecture
 
