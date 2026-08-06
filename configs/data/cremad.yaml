@@ -1,0 +1,21 @@
+dataset: CREMA-D
+dataset_root: data/raw/crema_d
+output_dir: data/manifests
+seed: 17
+split_ratios: [0.70, 0.15, 0.15]
+pilot_speaker_counts:
+  train: 8
+  validation: 2
+  test: 2
+label_policy:
+  source: intended_emotion_in_filename
+  include:
+    ANG: angry
+    HAP: happy
+    NEU: neutral
+    SAD: sad
+  exclude: [DIS, FEA]
+speaker_policy:
+  group_by: ActorID
+  stratify_by: Sex
+  demographics_used_as_model_features: false

@@ -31,6 +31,9 @@ class ManifestSample:
     region: str | None = None
     accent: str | None = None
     source_video_id: str | None = None
+    source_emotion: str | None = None
+    sentence_code: str | None = None
+    intensity: str | None = None
 
     def modality_mask(self) -> tuple[bool, bool, bool]:
         """Return availability in canonical audio/text/visual order."""

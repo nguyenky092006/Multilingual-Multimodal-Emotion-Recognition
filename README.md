@@ -71,6 +71,21 @@ python scripts/validate_manifest.py data/manifests/train.jsonl --labels configs/
 The command exits with code 2 for serious leakage. Use `--skip-file-checks` only while
 reviewing metadata before media has been mounted; it does not disable identity/leakage checks.
 
+### CREMA-D manifests
+
+After the official CREMA-D clone is available at `data/raw/crema_d`, build both approved
+speaker-exclusive manifests with:
+
+```powershell
+python scripts/build_cremad_manifest.py
+```
+
+The full split uses 64/14/13 train/validation/test actors. The nested pilot uses 8/2/2
+actors and is intended only for pipeline debugging. Both use intended filename labels,
+map `ANG/HAP/NEU/SAD` to the common four-class label space, and exclude `DIS/FEA` without
+merging. Generated manifests, the exact actor assignment, and an audit report are written
+under `data/manifests/`. See `docs/cremad_protocol.md` for the reproducible protocol.
+
 ## Encoder cache commands
 
 The verified iteration-1 configurations are inspectable offline:

@@ -92,7 +92,8 @@ def _check_media(path: Path, kind: str) -> str | None:
         return "unsupported_container"
     if kind == "video":
         try:
-            header = path.read_bytes()[:16]
+            with path.open("rb") as handle:
+                header = handle.read(16)
         except OSError:
             return "corrupt"
         suffix = path.suffix.casefold()

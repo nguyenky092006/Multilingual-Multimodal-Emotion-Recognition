@@ -20,4 +20,7 @@ optional_nullable_fields:
   region: string
   accent: string
   source_video_id: string
+  source_emotion: string
+  sentence_code: string
+  intensity: string
 modality_order: [audio, text, visual]
