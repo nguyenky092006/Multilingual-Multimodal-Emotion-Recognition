@@ -1,0 +1,10 @@
+labels:
+  angry: 0
+  happy: 1
+  neutral: 2
+  sad: 3
+aliases: {}
+policy: >-
+  Labels outside this mapping are rejected. Corpus-specific mappings, including any
+  happy/excited merge, must be reviewed and added explicitly; they are never inferred.
+

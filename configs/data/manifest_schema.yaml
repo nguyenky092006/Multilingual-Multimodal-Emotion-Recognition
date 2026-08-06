@@ -1,0 +1,24 @@
+format: jsonl
+required_fields:
+  sample_id: string
+  audio_path: [string, null]
+  video_path: [string, null]
+  transcript: [string, null]
+  emotion: string
+  speaker_id: string
+  language: string
+  corpus: string
+  split: string
+  duration: [number, null]
+  transcript_source: [string, null]
+  asr_confidence: [number, null]
+  audio_available: boolean
+  text_available: boolean
+  visual_available: boolean
+optional_nullable_fields:
+  country: string
+  region: string
+  accent: string
+  source_video_id: string
+modality_order: [audio, text, visual]
+

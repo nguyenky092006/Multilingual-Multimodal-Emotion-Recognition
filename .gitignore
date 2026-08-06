@@ -2,8 +2,8 @@
 references/source/
 
 # Data, cached embeddings, model artifacts, and experiment outputs
-data/
-cache/
+/data/
+/cache/
 outputs/*
 !outputs/.gitkeep
 *.pt
@@ -36,4 +36,3 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
-
