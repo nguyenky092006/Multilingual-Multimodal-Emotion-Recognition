@@ -1,6 +1,6 @@
 # Implementation plan
 
-## Iteration 1 — implemented here
+## Iteration 1 — implemented
 
 1. Define an explicit JSONL manifest and four-label YAML mapping.
 2. Validate metadata, files, duplicate identities, split leakage, imbalance, modality
@@ -17,13 +17,15 @@
 ## Iteration 2 — in progress with explicit approval and real data
 
 - Implemented frozen XLS-R waveform cache extraction with pinned SafeTensor weights,
-  masked-mean pooling, per-sample source hashes/quality metadata, atomic writes, resume,
-  and a verified 648-clip CREMA-D pilot.
-- Implemented frozen Qwen3 text cache extraction with pinned SafeTensor weights, exact-text
-  deduplication, float32 normalization, per-manifest indexes, prompt/label confounding audit,
-  resume, and a verified 648-sample/12-transcript CREMA-D pilot.
-- Implement a verified frame encoder cache extractor only after its separate model-download
-  approval.
+  masked-mean pooling, source hashes/quality metadata, atomic writes, resume, and a
+  verified 648-clip CREMA-D pilot.
+- Implemented frozen Qwen3 text cache extraction with pinned SafeTensor weights,
+  exact-text deduplication, float32 normalization, per-manifest indexes,
+  prompt/label-confounding audit, resume, and a verified 648-sample/12-transcript pilot.
+- Implemented the frozen SigLIP visual-cache framework with pinned SafeTensor weights,
+  PyAV decoding, eight uniform full frames, mean pooling, quality metadata, atomic
+  writes, strict resume, offline fake-model tests, and a verified 648-clip CREMA-D pilot.
+  Its sample IDs align exactly with the verified audio and text pilot caches.
 - Create corpus converters only for datasets the user has obtained legally.
 - Establish speaker/source-video group splits and run within-/cross-corpus baselines.
 

@@ -26,7 +26,17 @@ text:
   deduplicate_exact_transcripts: true
 visual:
   identifier: google/siglip-base-patch16-224
+  revision: 559dc4dd2ab64df71cea758c5204a43113812dae
+  license: apache-2.0
   frozen: true
+  decoder: pyav
+  frame_sampling: uniform
   frames_per_clip: 8
-  pooling: masked_mean
+  frame_representation: vision_pooler_output
+  pooling: mean
   face_crop: false
+  image_size: 224
+  batch_size: 2
+  inference_precision: float16
+  cache_dtype: float32
+  embedding_dimension: 768

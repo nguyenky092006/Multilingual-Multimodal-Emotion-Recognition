@@ -1,25 +1,28 @@
 # Multilingual Multimodal Emotion Recognition
 
 Clean-room PyTorch framework for **Language-Aware Meta-Adapters for Low-Resource
-Multilingual Multimodal Emotion Recognition**. Iteration 1 operates entirely on cached
-audio, text, and visual embeddings and includes an offline synthetic smoke experiment.
-It does not download datasets or pretrained models and does not report real research
-results.
+Multilingual Multimodal Emotion Recognition**. The system supports independent audio,
+text, and visual streams, missing modalities, cached frozen encoders, lightweight
+adapters, and reliability-aware fusion.
 
-## What is implemented
+## Implemented
 
-- JSONL manifest with explicit audio/text/visual availability and nullable location/accent metadata.
-- Leakage checks for IDs, media paths, speaker, original video, and transcript duplicates.
-- Three projections and modality-specific residual adapters.
-- One shared emotion adapter or parameter-matched separate-adapter ablation.
-- Batched English/Mandarin/unknown and known/unknown corpus routing with usage/norm logs.
-- Masked concatenation and reliability-aware fusion; missing modalities get exactly zero weight.
-- Modality dropout that preserves at least one stream.
-- Trimodal classifier, UAR, macro-F1, accuracy, per-class recall, and confusion matrix.
-- Deterministic synthetic cached embeddings, checkpoint reload, tests, and reproducibility artifacts.
+- JSONL manifests with explicit modality availability and leakage validation.
+- Speaker-exclusive CREMA-D full (64/14/13 actors) and pilot (8/2/2 actors) protocols.
+- Frozen XLS-R audio caching with 16 kHz waveform checks and masked-mean pooling.
+- Frozen Qwen3 text caching with exact-transcript deduplication and confounding audit.
+- Frozen SigLIP visual-cache framework with PyAV decoding, eight uniformly sampled
+  full frames, official image preprocessing, mean pooling, visual quality metadata, and
+  a verified 648-clip CREMA-D pilot aligned with the audio/text caches.
+- Three projections, modality adapters, a shared emotion adapter, and language/corpus
+  residual routing.
+- Concatenation and reliability-aware gated fusion with exact zero weight for missing
+  modalities.
+- UAR, macro-F1, accuracy, checkpoints, deterministic synthetic smoke runs, and tests.
 
-ProtoNet, real encoder extraction, federated learning, and conversational ERC are not
-implemented in this iteration. See `docs/implementation_plan.md`.
+Prototypical meta-learning, face-crop features, and temporal visual attention remain
+later controlled experiments. Federated learning and conversational ERC are outside the
+current scope.
 
 ## Environment
 
@@ -29,11 +32,11 @@ Use Python 3.10–3.14. From the repository root:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,encoders]"
 ```
 
-PyTorch is the only large dependency in the smoke environment. Installing the optional
-`encoders` extra does **not** download model weights, but it is not needed for iteration 1.
+Installing dependencies does not itself download model weights. Pretrained weights are
+loaded only by an extraction command with `--allow-download`.
 
 ## Verify the implementation
 
@@ -43,52 +46,24 @@ python scripts/train.py --config configs/experiment/cpu_smoke.yaml
 python scripts/evaluate.py --config configs/experiment/cpu_smoke.yaml
 ```
 
-Generated caches, checkpoint, resolved config, training summary, and evaluation metrics
-are written to `outputs/smoke/` and ignored by Git. Every resulting metric file is marked
+Synthetic outputs are written under `outputs/`, ignored by Git, and explicitly marked
 `"synthetic": true`.
 
-Aggregate multiple completed seeds only after producing their metric files:
+## CREMA-D manifests
 
-```powershell
-python scripts/aggregate_results.py outputs/seed17/evaluation_metrics.json outputs/seed23/evaluation_metrics.json outputs/seed41/evaluation_metrics.json
-```
-
-## Manifest
-
-The schema is documented in `configs/data/manifest_schema.yaml`; labels are in
-`configs/data/labels.yaml`. One UTF-8 JSON object is stored per line. Example:
-
-```json
-{"sample_id":"cremad-1001","audio_path":"data/cremad/audio/1001.wav","video_path":"data/cremad/video/1001.flv","transcript":"It's eleven o'clock","emotion":"neutral","speaker_id":"1001","language":"en","corpus":"crema-d","split":"train","duration":2.1,"transcript_source":"gold","asr_confidence":null,"audio_available":true,"text_available":true,"visual_available":true,"country":null,"region":null,"accent":null,"source_video_id":"1001-sentence-01"}
-```
-
-Validate before any training or extraction:
-
-```powershell
-python scripts/validate_manifest.py data/manifests/train.jsonl --labels configs/data/labels.yaml --data-root .
-```
-
-The command exits with code 2 for serious leakage. Use `--skip-file-checks` only while
-reviewing metadata before media has been mounted; it does not disable identity/leakage checks.
-
-### CREMA-D manifests
-
-After the official CREMA-D clone is available at `data/raw/crema_d`, build both approved
-speaker-exclusive manifests with:
+With the official dataset at `data/raw/crema_d`, build the approved manifests:
 
 ```powershell
 python scripts/build_cremad_manifest.py
 ```
 
-The full split uses 64/14/13 train/validation/test actors. The nested pilot uses 8/2/2
-actors and is intended only for pipeline debugging. Both use intended filename labels,
-map `ANG/HAP/NEU/SAD` to the common four-class label space, and exclude `DIS/FEA` without
-merging. Generated manifests, the exact actor assignment, and an audit report are written
-under `data/manifests/`. See `docs/cremad_protocol.md` for the reproducible protocol.
+The protocol maps intended filename labels `ANG/HAP/NEU/SAD` to angry/happy/neutral/sad
+and excludes `DIS/FEA` without merging. See `docs/cremad_protocol.md`.
 
-## Encoder cache commands
+## Frozen encoder caches
 
-The verified iteration-1 configurations are inspectable offline:
+All extractors default to the 648-clip CREMA-D pilot. Inspect their resolved contracts
+without loading a model:
 
 ```powershell
 python scripts/cache_audio_embeddings.py --dry-run
@@ -96,60 +71,67 @@ python scripts/cache_text_embeddings.py --dry-run
 python scripts/cache_visual_embeddings.py --dry-run
 ```
 
-The visual command still stops without `--dry-run` because SigLIP requires separate download
-and implementation approval. Audio and text have approved CREMA-D implementations, but they
-cannot access the network unless `--allow-download` is given. There is no silent fallback.
+### Audio
 
-The Qwen3 text extractor deduplicates exact transcripts before inference. CREMA-D's 648
-pilot records map to only 12 unique prompted sentences; one SafeTensor is stored per text
-hash and a manifest index maps every sample to its vector. Inspect without loading a model:
+The pinned `facebook/wav2vec2-xls-r-300m` extractor caches one float32 1024-D vector per
+clip. A canary and resumable pilot extraction are:
 
 ```powershell
-python scripts/cache_text_embeddings.py --dry-run --limit 16
+python scripts/cache_audio_embeddings.py --allow-download --limit 16
+python scripts/cache_audio_embeddings.py
 ```
 
-Add `--allow-download` only to an explicitly approved canary. See
-`docs/text_cache_protocol.md` for the prompt-frequency confounding and cache contract.
+See `docs/audio_cache_protocol.md`.
 
-The approved CREMA-D XLS-R extractor is implemented with resumable per-sample SafeTensor
-caches. Inspect a 16-clip canary without loading or downloading a model:
+### Text
+
+The pinned `Qwen/Qwen3-Embedding-0.6B` extractor caches normalized float32 1024-D
+vectors. Exact transcripts are deduplicated: CREMA-D's 648 pilot records contain only
+12 distinct prompted sentences.
 
 ```powershell
-python scripts/cache_audio_embeddings.py --dry-run --limit 16
+python scripts/cache_text_embeddings.py --allow-download --limit 16
+python scripts/cache_text_embeddings.py
 ```
 
-Only after explicit approval, add `--allow-download` to that canary command. When it passes,
-rerun without `--limit` and without `--allow-download` to complete the 648-clip pilot from
-locally cached weights. See `docs/audio_cache_protocol.md` for the cache contract. Text and
-visual extraction remain guarded until they receive separate approval and tests.
+See `docs/text_cache_protocol.md` for the prompt-frequency confounding limitation.
+
+### Visual
+
+Before loading SigLIP, validate real FLV decoding and uniform frame sampling:
+
+```powershell
+python scripts/cache_visual_embeddings.py --decode-check --limit 16
+```
+
+After explicit approval for the approximately 813 MB checkpoint, run a 16-clip canary,
+then resume the complete pilot from locally cached weights:
+
+```powershell
+python scripts/cache_visual_embeddings.py --allow-download --limit 16
+python scripts/cache_visual_embeddings.py
+```
+
+The baseline uses `google/siglip-base-patch16-224`, eight full RGB frames, and mean
+pooling into one float32 768-D clip vector. Face crop is intentionally disabled until a
+later ablation. See `docs/visual_cache_protocol.md`.
 
 ## Architecture
 
-For each available modality, a cached frozen-encoder vector is projected to `d_model`,
-passed through a modality adapter and shared emotion adapter, then receives language and
-corpus residuals. The router maps unseen values to explicit `unknown` adapters. Fusion is
-either masked concatenation or a quality-conditioned gate over audio/text/visual. The
-classifier is LayerNorm, dropout, and a linear label head.
-
-Reliability quality slots are currently one normalized value per modality in the synthetic
-contract. Real cache builders must derive and document them from audio duration/energy,
-text availability/ASR confidence, and valid-frame/visual quality measurements.
-
-## Configuration presets
-
-- `configs/experiment/cpu_smoke.yaml`: offline acceptance run.
-- `configs/experiment/small_gpu.yaml`: future cached-embedding training preset.
-- `configs/baseline/baselines.yaml`: B1-A/T/V, B2 pairs, B3–B5, P1–P3 matrix.
-- `configs/encoder/frozen_encoders.yaml`: frozen encoder identifiers and pooling policy.
-
-No committed configuration contains a local Windows dataset path.
+Each cached frozen-encoder vector is projected to `d_model`, passed through a modality
+adapter and shared emotion adapter, then receives language- and corpus-specific
+residuals. Fusion is either masked concatenation or a quality-conditioned gate over
+audio/text/visual. Any subset of the three modalities is supported, including an
+audio–text-only paper configuration.
 
 ## Research safeguards
 
-- ESD is audio plus transcript, not trimodal.
-- Original Mandarin text is preserved; translation is not a preprocessing requirement.
-- Incompatible emotion labels are rejected until mapped explicitly.
+- No missing modality is replaced with fabricated features.
+- Original Mandarin text is preserved; translation is not mandatory preprocessing.
 - Speaker and original-video grouping precede train/test splitting.
-- Language–corpus confounding is reported and is not treated as a language effect.
-- Reference PDFs/DOCX, data, caches, checkpoints, credentials, and private files are ignored.
-- External audit and attribution decisions are recorded in `docs/` and `NOTICE.md`.
+- Incompatible labels require explicit mappings.
+- Language–corpus confounding is reported rather than interpreted as a language effect.
+- Full-frame visual features may encode identity/background shortcuts; face crops are a
+  later controlled comparison.
+- Reference documents, datasets, model weights, caches, checkpoints, and credentials are
+  ignored by Git.
