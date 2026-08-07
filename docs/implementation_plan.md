@@ -19,8 +19,11 @@
 - Implemented frozen XLS-R waveform cache extraction with pinned SafeTensor weights,
   masked-mean pooling, per-sample source hashes/quality metadata, atomic writes, resume,
   and a verified 648-clip CREMA-D pilot.
-- Implement Qwen3 text cache extraction and a verified frame encoder cache extractor only
-  after their separate model-download approvals.
+- Implemented frozen Qwen3 text cache extraction with pinned SafeTensor weights, exact-text
+  deduplication, float32 normalization, per-manifest indexes, prompt/label confounding audit,
+  resume, and a verified 648-sample/12-transcript CREMA-D pilot.
+- Implement a verified frame encoder cache extractor only after its separate model-download
+  approval.
 - Create corpus converters only for datasets the user has obtained legally.
 - Establish speaker/source-video group splits and run within-/cross-corpus baselines.
 

@@ -96,10 +96,20 @@ python scripts/cache_text_embeddings.py --dry-run
 python scripts/cache_visual_embeddings.py --dry-run
 ```
 
-Text and visual commands still stop without `--dry-run` because Qwen3 Embedding and SigLIP
-require separate download and implementation approval. The audio command has an approved
-CREMA-D implementation, but it cannot access the network unless `--allow-download` is given.
-There is no silent fallback.
+The visual command still stops without `--dry-run` because SigLIP requires separate download
+and implementation approval. Audio and text have approved CREMA-D implementations, but they
+cannot access the network unless `--allow-download` is given. There is no silent fallback.
+
+The Qwen3 text extractor deduplicates exact transcripts before inference. CREMA-D's 648
+pilot records map to only 12 unique prompted sentences; one SafeTensor is stored per text
+hash and a manifest index maps every sample to its vector. Inspect without loading a model:
+
+```powershell
+python scripts/cache_text_embeddings.py --dry-run --limit 16
+```
+
+Add `--allow-download` only to an explicitly approved canary. See
+`docs/text_cache_protocol.md` for the prompt-frequency confounding and cache contract.
 
 The approved CREMA-D XLS-R extractor is implemented with resumable per-sample SafeTensor
 caches. Inspect a 16-clip canary without loading or downloading a model:

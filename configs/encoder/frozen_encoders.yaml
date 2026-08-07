@@ -11,10 +11,19 @@ audio:
   cache_dtype: float32
 text:
   identifier: Qwen/Qwen3-Embedding-0.6B
+  revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
   fallback_identifier: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
   frozen: true
   pooling: last_token
   preserve_original_language: true
+  max_length: 128
+  batch_size: 16
+  inference_precision: bfloat16
+  cache_dtype: float32
+  normalize_embeddings: true
+  embedding_dimension: 1024
+  instruction: null
+  deduplicate_exact_transcripts: true
 visual:
   identifier: google/siglip-base-patch16-224
   frozen: true
