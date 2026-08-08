@@ -28,10 +28,30 @@ def _summary(values: list[float]) -> dict[str, float]:
     }
 
 
-def aggregate(records: list[dict[str, Any]], sources: list[str]) -> dict[str, Any]:
+def aggregate(
+    records: list[dict[str, Any]],
+    sources: list[str],
+    protocol_override: str | None = None,
+) -> dict[str, Any]:
     if not records:
         raise ValueError("at least one metrics record is required")
-    protocols = {str(item.get("protocol", "unspecified")) for item in records}
+    if protocol_override is not None:
+        protocol_override = protocol_override.strip()
+        if not protocol_override:
+            raise ValueError("protocol override must not be blank")
+        explicit_protocols = {
+            str(item["protocol"])
+            for item in records
+            if str(item.get("protocol", "unspecified")) != "unspecified"
+        }
+        if explicit_protocols and explicit_protocols != {protocol_override}:
+            raise ValueError(
+                f"protocol override {protocol_override!r} conflicts with "
+                f"explicit protocols={sorted(explicit_protocols)}"
+            )
+        protocols = {protocol_override}
+    else:
+        protocols = {str(item.get("protocol", "unspecified")) for item in records}
     modes = {str(item.get("training_mode", "supervised")) for item in records}
     if len(protocols) != 1 or len(modes) != 1:
         raise ValueError(
@@ -49,6 +69,7 @@ def aggregate(records: list[dict[str, Any]], sources: list[str]) -> dict[str, An
         "training_mode": next(iter(modes)),
         "synthetic": all(item.get("synthetic") is True for item in records),
         "paper_ready": all(item.get("paper_ready") is True for item in records),
+        "protocol_override_applied": protocol_override is not None,
         "metrics": {
             name: _summary([float(item[name]) for item in records]) for name in METRICS
         },
@@ -75,12 +96,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="+", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--protocol")
     args = parser.parse_args()
     records = []
     for path in args.paths:
         with path.open("r", encoding="utf-8") as handle:
             records.append(json.load(handle))
-    result = aggregate(records, [path.as_posix() for path in args.paths])
+    result = aggregate(records, [path.as_posix() for path in args.paths], args.protocol)
     rendered = json.dumps(result, indent=2, ensure_ascii=False)
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)

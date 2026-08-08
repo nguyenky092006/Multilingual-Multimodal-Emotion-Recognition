@@ -235,6 +235,8 @@ def test_real_cached_runner_saves_and_reloads_checkpoint(tmp_path: Path):
 
     summary = run_cached_training(config_path, tmp_path)
     assert summary["synthetic"] is False
+    assert summary["training_mode"] == "supervised"
+    assert summary["protocol"] == "speaker_disjoint_full_test"
     assert summary["pilot"] is True
     assert summary["epochs_completed"] == 1
     assert len(summary["source_snapshot_sha256"]) == 64
@@ -246,6 +248,8 @@ def test_real_cached_runner_saves_and_reloads_checkpoint(tmp_path: Path):
         modality_subsets=[["audio"], ["text", "visual"]],
     )
     assert metrics["synthetic"] is False
+    assert metrics["training_mode"] == "supervised"
+    assert metrics["protocol"] == "speaker_disjoint_full_test"
     assert metrics["pilot"] is True
     assert metrics["checkpoint_epoch"] == 1
     assert metrics["source_snapshot_matches_checkpoint"] is True

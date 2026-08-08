@@ -243,6 +243,8 @@ def run_cached_training(
     }
     metadata = {
         "synthetic": False,
+        "training_mode": "supervised",
+        "protocol": str(config.get("evaluation_protocol", "speaker_disjoint_full_test")),
         "pilot": bool(config.get("pilot", False)),
         "diagnostic": bool(config.get("diagnostic", False)),
         "paper_ready": False,
@@ -344,6 +346,8 @@ def run_cached_evaluation(
     metrics.update(
         {
             "synthetic": False,
+            "training_mode": "supervised",
+            "protocol": str(config.get("evaluation_protocol", "speaker_disjoint_full_test")),
             "pilot": bool(config.get("pilot", False)),
             "diagnostic": bool(config.get("diagnostic", False)),
             "paper_ready": False,
