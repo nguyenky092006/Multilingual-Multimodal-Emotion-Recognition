@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import torch
 from torch import Tensor, nn
@@ -15,7 +16,9 @@ from mmer.models.trimodal import TrimodalEmotionModel
 
 def _to_device(batch: dict[str, Any], device: torch.device) -> dict[str, Any]:
     copied = dict(batch)
-    copied["embeddings"] = {key: value.to(device) for key, value in batch["embeddings"].items()}
+    copied["embeddings"] = {
+        key: value.to(device) for key, value in batch["embeddings"].items()
+    }
     for key in ("modality_mask", "quality", "labels"):
         copied[key] = batch[key].to(device)
     return copied
@@ -36,7 +39,9 @@ def train_one_epoch(
     batch_count = 0
     for raw_batch in loader:
         batch = _to_device(raw_batch, device)
-        mask = apply_modality_dropout(batch["modality_mask"], modality_dropout, dropout_generator)
+        mask = apply_modality_dropout(
+            batch["modality_mask"], modality_dropout, dropout_generator
+        )
         optimizer.zero_grad(set_to_none=True)
         output = model(
             batch["embeddings"], mask, batch["languages"], batch["corpora"], batch["quality"]
@@ -100,7 +105,7 @@ def evaluate_model(
         predictions.extend(logits.argmax(dim=-1).cpu().tolist())
         targets.extend(batch["labels"].cpu().tolist())
         all_weights.append(output["fusion_weights"].cpu())
-        masks.append(batch["modality_mask"].cpu())
+        masks.append(output["effective_modality_mask"].cpu())
         languages.extend(batch["languages"])
         corpora.extend(batch["corpora"])
         emotions.extend(batch["emotions"])

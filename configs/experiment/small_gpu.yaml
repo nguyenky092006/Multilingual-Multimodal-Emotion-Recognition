@@ -1,21 +1,29 @@
-experiment_name: cached_small_gpu
+experiment_name: synthetic_small_gpu
 seed: 17
 device: cuda
-epochs: 30
+epochs: 5
 batch_size: 64
 learning_rate: 0.001
 weight_decay: 0.0001
-gradient_accumulation_steps: 2
-mixed_precision: true
 modality_dropout: 0.15
-output_dir: outputs/small_gpu
-manifest_path: data/manifests/train.jsonl
+output_dir: outputs/small_gpu_smoke
+labels_path: configs/data/labels.yaml
+data:
+  synthetic: true
+  train_samples: 512
+  validation_samples: 128
+  test_samples: 128
+  input_dims:
+    audio: 1024
+    text: 1024
+    visual: 768
 model:
   d_model: 256
   projection_hidden: 512
   adapter_bottleneck: 64
   dropout: 0.2
   fusion: reliability
-  shared_adapter: true
+  emotion_adapter_mode: shared
   routing_alpha: 0.5
-labels_path: configs/data/labels.yaml
+  languages: [en, zh]
+  corpora: [synthetic_a, synthetic_b]

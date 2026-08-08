@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import importlib.metadata
 import hashlib
+import importlib.metadata
 import json
 import platform
 import time
@@ -15,21 +15,30 @@ import torch
 import yaml
 
 from mmer.config import load_label_mapping, load_yaml
+from mmer.data.cached import MODALITIES
 from mmer.data.real_cached import RealCacheBundle, load_real_cache_bundle
 from mmer.engine import evaluate_model, train_one_epoch
 from mmer.models.trimodal import TrimodalEmotionModel, parameter_counts
-from mmer.runner import _git_hash, _loader, _model_kwargs
-from mmer.utils import load_checkpoint, save_checkpoint, seed_everything
+from mmer.runner import (
+    _git_hash,
+    _inside_root,
+    _loader,
+    _model_kwargs,
+    _validate_training_config,
+)
+from mmer.utils import read_checkpoint, save_checkpoint, seed_everything
 
 
 def _resolve_config(config_path: str | Path, root: Path) -> tuple[Path, dict[str, Any]]:
-    path = Path(config_path)
-    path = (root / path).resolve() if not path.is_absolute() else path.resolve()
-    try:
-        path.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"configuration must be inside project root: {path}") from exc
+    path = _inside_root(root, config_path, "configuration")
     config = load_yaml(path)
+    alias = config.get("deprecated_alias")
+    if alias is not None:
+        if not isinstance(alias, str) or len(config) != 1:
+            raise ValueError("deprecated_alias configurations may contain only one string field")
+        path = _inside_root(root, alias, "aliased configuration")
+        config = load_yaml(path)
+    _validate_training_config(config)
     if config.get("data", {}).get("synthetic", True):
         raise ValueError("real cached runner requires data.synthetic: false")
     return path, config
@@ -50,7 +59,7 @@ def _bundle(root: Path, config: dict[str, Any], labels: dict[str, int]) -> RealC
         cache_sources=data["caches"],
         labels=labels,
         input_dims=data["input_dims"],
-        enabled_modalities=data.get("enabled_modalities", ["audio", "text", "visual"]),
+        enabled_modalities=data.get("enabled_modalities", MODALITIES),
         quality_policy=str(data.get("quality_policy", "validated_metadata_v1")),
     )
 
@@ -84,7 +93,7 @@ def _versions() -> dict[str, str]:
 
 
 def _source_snapshot_sha256(root: Path, config_path: Path) -> str:
-    """Hash executable project sources and the exact experiment configuration."""
+    """Hash executable project sources and the exact resolved experiment configuration."""
 
     paths = [
         *sorted((root / "src").rglob("*.py")),
@@ -101,6 +110,25 @@ def _source_snapshot_sha256(root: Path, config_path: Path) -> str:
     return digest.hexdigest()
 
 
+def _limitations(config: dict[str, Any], audit: dict[str, Any]) -> list[str]:
+    limitations: list[str] = []
+    languages = list(audit["language_counts"])
+    corpora = list(audit["corpus_counts"])
+    if len(languages) == 1:
+        limitations.append(f"single language ({languages[0]})")
+    if len(corpora) == 1:
+        limitations.append(f"single corpus ({corpora[0]})")
+    if bool(config.get("pilot", False)):
+        limitations.append("pilot subset")
+    limitations.append("single seed unless repeated explicitly")
+    if audit.get("unique_transcript_count", audit["sample_count"]) <= 20:
+        limitations.append(
+            f"only {audit['unique_transcript_count']} unique transcript strings"
+        )
+    limitations.append("not a paper-ready comparison")
+    return limitations
+
+
 def run_cached_training(
     config_path: str | Path,
     project_root: str | Path = ".",
@@ -110,7 +138,7 @@ def run_cached_training(
     root = Path(project_root).resolve()
     config_file, config = _resolve_config(config_path, root)
     source_snapshot = _source_snapshot_sha256(root, config_file)
-    labels = load_label_mapping(root / config["labels_path"])
+    labels = load_label_mapping(_inside_root(root, config["labels_path"], "label mapping"))
     seed = int(config["seed"])
     seed_everything(seed)
     device = _device(config)
@@ -133,7 +161,7 @@ def run_cached_training(
         weights = _class_weights(train_set, len(labels)).to(device)
     dropout_generator = torch.Generator().manual_seed(seed + 100)
 
-    output_dir = root / config["output_dir"]
+    output_dir = _inside_root(root, config["output_dir"], "output directory")
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / "best_checkpoint.pt"
     if device.type == "cuda":
@@ -185,7 +213,6 @@ def run_cached_training(
             if stale_epochs >= patience:
                 break
 
-    elapsed = time.perf_counter() - started
     best_validation = history[best_epoch - 1]["validation"]
     label_names = [name for name, _ in sorted(labels.items(), key=lambda item: item[1])]
     zero_recall_classes = [
@@ -194,14 +221,14 @@ def run_cached_training(
         if float(value) == 0.0
     ]
     global_weights = [float(value) for value in best_validation["fusion_weight_global_mean"]]
-    dominant_index = max(range(len(global_weights)), key=global_weights.__getitem__)
-    dominant_modality = ("audio", "text", "visual")[dominant_index]
-    multiple_modalities = len(config["data"].get("enabled_modalities", [])) > 1
+    enabled = tuple(bundle.audit["enabled_modalities"])
+    enabled_indices = [MODALITIES.index(name) for name in enabled]
+    dominant_index = max(enabled_indices, key=lambda index: global_weights[index])
     diagnostic_flags = {
         "zero_recall_classes_at_best_validation": zero_recall_classes,
         "dominant_fusion_modality": (
-            dominant_modality
-            if multiple_modalities and global_weights[dominant_index] > 0.7
+            MODALITIES[dominant_index]
+            if len(enabled) > 1 and global_weights[dominant_index] > 0.7
             else None
         ),
         "dominant_fusion_weight": global_weights[dominant_index],
@@ -223,20 +250,14 @@ def run_cached_training(
         "epochs_completed": len(history),
         "best_epoch": best_epoch,
         "best_validation_uar": best_uar,
-        "training_seconds": elapsed,
+        "training_seconds": time.perf_counter() - started,
         "peak_gpu_memory_bytes": (
             int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
         ),
         "checkpoint_path": checkpoint_path.relative_to(root).as_posix(),
         "history": history,
         "diagnostic_flags": diagnostic_flags,
-        "limitations": [
-            "single English corpus",
-            "pilot actor subset",
-            "single seed unless repeated explicitly",
-            "CREMA-D text contains only twelve fixed official prompts",
-            "not a paper-ready comparison",
-        ],
+        "limitations": _limitations(config, bundle.audit),
     }
     with (output_dir / "resolved_config.yaml").open("w", encoding="utf-8") as handle:
         yaml.safe_dump(config, handle, sort_keys=True, allow_unicode=True)
@@ -250,35 +271,41 @@ def run_cached_evaluation(
     checkpoint_path: str | Path | None = None,
     project_root: str | Path = ".",
 ) -> dict[str, Any]:
-    """Reload the best real-cache checkpoint and evaluate its held-out test speakers."""
+    """Reload a matching real-cache checkpoint and evaluate held-out speakers."""
 
     root = Path(project_root).resolve()
     config_file, config = _resolve_config(config_path, root)
     current_source_snapshot = _source_snapshot_sha256(root, config_file)
-    labels = load_label_mapping(root / config["labels_path"])
+    labels = load_label_mapping(_inside_root(root, config["labels_path"], "label mapping"))
     seed_everything(int(config["seed"]))
     device = _device(config)
     bundle = _bundle(root, config, labels)
-    path = Path(checkpoint_path) if checkpoint_path else root / config["output_dir"] / "best_checkpoint.pt"
-    path = (root / path).resolve() if not path.is_absolute() else path.resolve()
+    path_value = checkpoint_path or Path(config["output_dir"]) / "best_checkpoint.pt"
+    path = _inside_root(root, path_value, "checkpoint")
     if not path.is_file():
         raise ValueError(f"checkpoint does not exist: {path}")
 
-    provisional = TrimodalEmotionModel(**_model_kwargs(config, len(labels))).to(device)
-    payload = load_checkpoint(path, provisional, map_location=device)
+    payload = read_checkpoint(path, map_location=device)
     checkpoint_metadata = payload["metadata"]
+    expected_kwargs = _model_kwargs(config, len(labels))
     if checkpoint_metadata.get("synthetic", True):
         raise ValueError("refusing to evaluate a synthetic checkpoint as real")
     if checkpoint_metadata.get("manifest_sha256") != bundle.audit["manifest_sha256"]:
         raise ValueError("checkpoint manifest hash does not match current real cache bundle")
+    if checkpoint_metadata.get("cache_contracts") != bundle.audit["cache_contracts"]:
+        raise ValueError("checkpoint cache contracts do not match current real cache bundle")
     if checkpoint_metadata.get("labels") != labels:
         raise ValueError("checkpoint label mapping differs from current configuration")
+    if checkpoint_metadata.get("model_kwargs") != expected_kwargs:
+        raise ValueError("checkpoint model contract differs from current configuration")
+    model = TrimodalEmotionModel(**expected_kwargs).to(device)
+    model.load_state_dict(payload["model_state"])
 
     loader = _loader(bundle.splits["test"], int(config["batch_size"]), False, int(config["seed"]))
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     started = time.perf_counter()
-    metrics = evaluate_model(provisional, loader, device, len(labels))
+    metrics = evaluate_model(model, loader, device, len(labels))
     metrics.update(
         {
             "synthetic": False,
@@ -294,11 +321,12 @@ def run_cached_evaluation(
             "peak_gpu_memory_bytes": (
                 int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
             ),
-            "parameter_counts": parameter_counts(provisional),
+            "parameter_counts": parameter_counts(model),
             "data_audit": bundle.audit,
+            "limitations": _limitations(config, bundle.audit),
         }
     )
-    output_dir = root / config["output_dir"]
+    output_dir = _inside_root(root, config["output_dir"], "output directory")
     output_dir.mkdir(parents=True, exist_ok=True)
     with (output_dir / "evaluation_metrics.json").open("w", encoding="utf-8") as handle:
         json.dump(metrics, handle, ensure_ascii=False, indent=2)

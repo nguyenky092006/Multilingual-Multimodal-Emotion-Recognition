@@ -17,11 +17,19 @@ SERIOUS_CODES = {
     "duplicate_sample_id",
     "duplicate_audio_across_splits",
     "duplicate_video_across_splits",
+    "speaker_split_overlap",
     "speaker_train_test_overlap",
     "source_video_split_overlap",
     "no_available_modality",
     "unsupported_label",
     "missing_availability_metadata",
+    "missing_required_value",
+    "availability_path_mismatch",
+    "availability_text_mismatch",
+    "invalid_asr_confidence",
+    "invalid_duration",
+    "invalid_split",
+    "path_outside_root",
     "missing_audio",
     "missing_video",
     "empty_audio",
@@ -55,7 +63,7 @@ class ValidationReport:
 
     def raise_for_errors(self) -> None:
         if self.serious:
-            summary = "; ".join(f"{i.code}: {i.message}" for i in self.serious)
+            summary = "; ".join(f"{item.code}: {item.message}" for item in self.serious)
             raise ManifestValidationError(summary)
 
 
@@ -67,7 +75,9 @@ def _normalise_transcript(text: str) -> str:
     return re.sub(r"[^\w]+", "", text.casefold(), flags=re.UNICODE)
 
 
-def _group_values(samples: Iterable[ManifestSample], attribute: str) -> dict[str, list[ManifestSample]]:
+def _group_values(
+    samples: Iterable[ManifestSample], attribute: str
+) -> dict[str, list[ManifestSample]]:
     grouped: dict[str, list[ManifestSample]] = defaultdict(list)
     for sample in samples:
         value = getattr(sample, attribute)
@@ -88,7 +98,9 @@ def _check_media(path: Path, kind: str) -> str | None:
                     return "corrupt"
         except (wave.Error, EOFError, OSError):
             return "corrupt"
-    if kind == "video" and path.suffix.casefold() not in {".mp4", ".avi", ".mov", ".mkv", ".flv", ".webm"}:
+    if kind == "video" and path.suffix.casefold() not in {
+        ".mp4", ".avi", ".mov", ".mkv", ".flv", ".webm",
+    }:
         return "unsupported_container"
     if kind == "video":
         try:
@@ -117,8 +129,10 @@ def validate_manifest(
     check_files: bool = True,
     near_duplicate_threshold: float = 0.94,
 ) -> ValidationReport:
-    """Validate manifest integrity and expose non-fatal dataset risks."""
+    """Validate schema, all-split leakage, paths, and non-fatal dataset risks."""
 
+    if not 0.0 < near_duplicate_threshold <= 1.0:
+        raise ValueError("near_duplicate_threshold must be in (0, 1]")
     items = list(samples)
     report = ValidationReport(sample_count=len(items))
 
@@ -135,7 +149,13 @@ def validate_manifest(
         for field_name in ("sample_id", "speaker_id", "language", "corpus", "split"):
             value = getattr(item, field_name)
             if not isinstance(value, str) or not value.strip():
-                add("missing_required_value", f"{item.sample_id}: {field_name} must be a non-empty string", [item.sample_id])
+                add(
+                    "missing_required_value",
+                    f"{item.sample_id}: {field_name} must be a non-empty string",
+                    [item.sample_id],
+                )
+        if item.split not in {"train", "validation", "test"}:
+            add("invalid_split", f"{item.sample_id}: unsupported split {item.split!r}", [item.sample_id])
         if item.emotion not in labels:
             add("unsupported_label", f"{item.sample_id}: unsupported emotion {item.emotion!r}", [item.sample_id])
         mask = item.modality_mask()
@@ -161,21 +181,22 @@ def validate_manifest(
         for path_value, group in _group_values(items, attribute).items():
             splits = {sample.split for sample in group}
             if len(splits) > 1:
-                add(code, f"{path_value!r} occurs in splits {sorted(splits)}", [s.sample_id for s in group])
+                add(code, f"{path_value!r} occurs in splits {sorted(splits)}", [sample.sample_id for sample in group])
             elif len(group) > 1:
                 within_code = "duplicate_audio" if attribute == "audio_path" else "duplicate_video"
-                add(within_code, f"{path_value!r} is reused by {len(group)} samples", [s.sample_id for s in group])
+                add(within_code, f"{path_value!r} is reused by {len(group)} samples", [sample.sample_id for sample in group])
 
-    speakers = _group_values(items, "speaker_id")
-    for speaker, group in speakers.items():
+    for speaker, group in _group_values(items, "speaker_id").items():
         splits = {sample.split.casefold() for sample in group}
+        if len(splits) > 1:
+            add("speaker_split_overlap", f"speaker {speaker!r} appears in {sorted(splits)}", [sample.sample_id for sample in group])
         if "train" in splits and "test" in splits:
-            add("speaker_train_test_overlap", f"speaker {speaker!r} appears in train and test", [s.sample_id for s in group])
+            add("speaker_train_test_overlap", f"speaker {speaker!r} appears in train and test", [sample.sample_id for sample in group])
 
     for source_id, group in _group_values(items, "source_video_id").items():
         splits = {sample.split for sample in group}
         if len(splits) > 1:
-            add("source_video_split_overlap", f"source video {source_id!r} spans {sorted(splits)}", [s.sample_id for s in group])
+            add("source_video_split_overlap", f"source video {source_id!r} spans {sorted(splits)}", [sample.sample_id for sample in group])
 
     transcript_groups: dict[str, list[ManifestSample]] = defaultdict(list)
     for item in items:
@@ -183,7 +204,7 @@ def validate_manifest(
             transcript_groups[_normalise_transcript(item.transcript)].append(item)
     for text_key, group in transcript_groups.items():
         if text_key and len(group) > 1 and len({sample.split for sample in group}) > 1:
-            add("duplicate_transcript_across_splits", f"exact transcript duplicate spans splits: {text_key[:40]!r}", [s.sample_id for s in group])
+            add("duplicate_transcript_across_splits", f"exact transcript duplicate spans splits: {text_key[:40]!r}", [sample.sample_id for sample in group])
 
     unique_texts = [(key, group[0]) for key, group in transcript_groups.items() if key]
     if len(unique_texts) <= 2_000:
@@ -204,15 +225,13 @@ def validate_manifest(
     contingency = Counter(f"{sample.language}|{sample.corpus}" for sample in items)
     report.language_corpus_counts = dict(sorted(contingency.items()))
     language_to_corpora: dict[str, set[str]] = defaultdict(set)
-    corpus_to_languages: dict[str, set[str]] = defaultdict(set)
     for item in items:
         language_to_corpora[item.language].add(item.corpus)
-        corpus_to_languages[item.corpus].add(item.language)
     if len(language_to_corpora) > 1 and all(len(values) == 1 for values in language_to_corpora.values()):
         add("language_corpus_confounding", f"every language occurs in one corpus: {dict(language_to_corpora)}")
 
     if check_files:
-        base = Path(root) if root is not None else Path.cwd()
+        base = Path(root).resolve() if root is not None else Path.cwd().resolve()
         for item in items:
             for available, raw_path, kind in (
                 (item.audio_available, item.audio_path, "audio"),
@@ -220,7 +239,13 @@ def validate_manifest(
             ):
                 if not available or not raw_path:
                     continue
-                problem = _check_media((base / raw_path).resolve(), kind)
+                resolved = (base / raw_path).resolve()
+                try:
+                    resolved.relative_to(base)
+                except ValueError:
+                    add("path_outside_root", f"{item.sample_id}: {kind} path escapes project root: {raw_path}", [item.sample_id])
+                    continue
+                problem = _check_media(resolved, kind)
                 if problem:
                     add(f"{problem}_{kind}", f"{item.sample_id}: {kind} file {problem}: {raw_path}", [item.sample_id])
     return report

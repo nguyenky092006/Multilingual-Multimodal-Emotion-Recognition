@@ -1,13 +1,47 @@
-presets:
-  B1-A: {modalities: [audio], fusion: concat, adapters: false}
-  B1-T: {modalities: [text], fusion: concat, adapters: false}
-  B1-V: {modalities: [visual], fusion: concat, adapters: false}
-  B2-AT: {modalities: [audio, text], fusion: concat, adapters: false}
-  B2-AV: {modalities: [audio, visual], fusion: concat, adapters: false}
-  B2-TV: {modalities: [text, visual], fusion: concat, adapters: false}
-  B3: {modalities: [audio, text, visual], fusion: concat, adapters: false}
-  B4: {modalities: [audio, text, visual], fusion: concat, route_embeddings: true}
-  B5: {modalities: [audio, text, visual], fusion: concat, parameter_matched_shared: true}
-  P1: {modalities: [audio, text, visual], fusion: concat, routed_adapters: true}
-  P2: {modalities: [audio, text, visual], fusion: reliability, routed_adapters: true}
-  P3: {extends: P2, meta_learning: prototypical, status: future}
+schema_version: 2
+note: >-
+  This matrix is a research registry, not an automatic config expander. Every executed
+  run must have its own complete experiment YAML and recorded parameter count.
+tracks:
+  paper_audio_text:
+    source: Multilingual_Multimodal_SER documents
+    P1:
+      modalities: [audio, text]
+      method: hierarchical adapters plus reliability gate
+      status: blocked_until_multilingual_dataset_and_paper_config_exist
+    P2:
+      extends: P1
+      method: prototypical meta-learning
+      status: future
+    P3:
+      extends: P2
+      method: supervised contrastive objective
+      status: future
+  framework_trimodal:
+    F1:
+      modalities: [audio, text, visual]
+      method: hierarchical adapters plus masked concatenation
+      status: supported
+    F2:
+      modalities: [audio, text, visual]
+      method: F1 plus reliability-aware fusion
+      status: supported
+      config: configs/experiment/cremad_pilot_supervised_reliability.yaml
+    F3:
+      extends: F2
+      method: prototypical meta-learning
+      status: future
+  diagnostics:
+    B1-A: {modalities: [audio], fusion: concat, status: supported}
+    B1-T: {modalities: [text], fusion: concat, status: supported}
+    B1-V: {modalities: [visual], fusion: concat, status: supported}
+    B2-AT:
+      modalities: [audio, text]
+      fusion: concat
+      status: supported
+      config: configs/experiment/cremad_pilot_baseline_audio_text_concat.yaml
+    B2-AV: {modalities: [audio, visual], fusion: concat, status: supported}
+    B2-TV: {modalities: [text, visual], fusion: concat, status: supported}
+    B3: {modalities: [audio, text, visual], fusion: concat, status: supported}
+    B4: {method: metadata embeddings without routed adapters, status: future}
+    B5: {method: parameter-matched shared adapter, status: future}

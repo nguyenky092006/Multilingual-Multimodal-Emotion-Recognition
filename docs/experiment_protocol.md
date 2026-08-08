@@ -2,38 +2,43 @@
 
 ## Data contract
 
-Run manifest validation before cache extraction or training. Serious sample, path,
-source-video, or speaker leakage is fatal. Keep a manifest hash with every result.
-Country, region, and accent are descriptive nullable fields, not inferred labels.
+Run manifest validation before cache extraction or training. Invalid availability,
+paths, splits, duplicate identities, source-video overlap, or speaker overlap across any
+split is fatal. Keep the manifest and enabled cache-contract hashes with every result.
+Country, region, and accent remain nullable descriptive fields and are never inferred.
 
 ## Reproducible training
 
 - Use frozen encoders and immutable cached embeddings.
 - Seed Python, NumPy, PyTorch, CUDA, and DataLoader generators.
-- Save the resolved YAML, label mapping, package versions, git hash, manifest/cache hash,
-  parameter counts, checkpoint path, and metrics.
-- Select checkpoints by validation macro recall only. Evaluate the held-out test set once
-  per final seed/configuration.
-- Report synthetic runs separately from scientific experiments.
+- Save resolved YAML, labels, versions, git/source hash, manifest/cache hashes, parameter
+  counts, checkpoint path, and metrics.
+- Select checkpoints by validation UAR only; evaluate test speakers after selection.
+- Report synthetic and diagnostic runs separately from scientific experiments.
+- Refuse evaluation when checkpoint model, label, manifest, or cache contracts differ.
 
 ## Metrics and slices
 
-Primary: UAR (macro recall). Secondary: macro-F1, accuracy, per-class recall, and a
-confusion matrix. Report overall, per language, per corpus, and per modality pattern.
-For reliability fusion, report average weights for the same slices and verify unavailable
-modalities have exactly zero weight.
+Primary: UAR. Secondary: macro-F1, accuracy, per-class recall, and confusion matrix.
+Report overall, per language, per corpus, and per modality pattern. For reliability
+fusion, report average weights for the same slices and verify every unavailable or
+disabled modality has exactly zero weight.
 
 ## Baselines and ablations
 
-The preset matrix is in `configs/baseline/baselines.yaml`. Main runs should include the
-three unimodal baselines, all bimodal concatenations, trimodal concatenation, routed
-adapters, and reliability fusion. Later ablations remove each adapter/router/gate,
-compare parameter-matched adapters, visual pooling/crop choices, transcript source, and
-stress missing modalities.
+`configs/baseline/baselines.yaml` is a research registry, not an automatic preset
+expander. Every executed baseline needs a complete experiment YAML. Main comparisons
+should cover unimodal branches, all bimodal pairs, trimodal concatenation, hierarchical
+adapters, and reliability fusion with explicit parameter counts. Later controlled
+ablations cover metadata embeddings, parameter-matched adapters, visual pooling/crops,
+transcript source, and missing-modality stress tests.
+
+The paper audio-text and reusable trimodal framework tracks use different stage names;
+see `docs/spec_alignment.md`.
 
 ## Real-data split policy
 
-All utterances from a speaker and original source video stay in one split. With dialogue
-media, group by source dialogue/episode as well. Any unavoidable language–corpus
-confounding is documented and evaluated through corpus-held-out slices, never presented
-as a clean language causal effect.
+All utterances from a speaker and original source video stay in one split. Dialogue
+media must additionally group by dialogue/episode. Language–corpus confounding is
+reported and tested through held-out corpora, never presented as a clean language
+causal effect.

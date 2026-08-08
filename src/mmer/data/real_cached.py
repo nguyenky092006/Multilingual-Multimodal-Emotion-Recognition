@@ -81,9 +81,9 @@ def _load_index(path: Path, root: Path, modality: str) -> dict[str, dict[str, An
         cache_path = _inside_root(root, cache_value, f"{modality} cache path")
         if not cache_path.is_file():
             raise ValueError(f"{modality} cache file is missing: {cache_path}")
-        row = dict(row)
-        row["_resolved_cache_path"] = cache_path
-        rows[sample_id] = row
+        copied = dict(row)
+        copied["_resolved_cache_path"] = cache_path
+        rows[sample_id] = copied
     if not rows:
         raise ValueError(f"{modality} cache index is empty: {path}")
     return rows
@@ -145,7 +145,11 @@ def _check_speaker_exclusivity(samples: Sequence[ManifestSample]) -> None:
     speaker_splits: dict[str, set[str]] = defaultdict(set)
     for sample in samples:
         speaker_splits[sample.speaker_id].add(sample.split)
-    overlap = {speaker: sorted(splits) for speaker, splits in speaker_splits.items() if len(splits) > 1}
+    overlap = {
+        speaker: sorted(splits)
+        for speaker, splits in speaker_splits.items()
+        if len(splits) > 1
+    }
     if overlap:
         preview = dict(list(sorted(overlap.items()))[:5])
         raise ValueError(f"speaker leakage across manifest splits: {preview}")
@@ -166,11 +170,7 @@ def _metadata_quality(
         if sample.asr_confidence is not None:
             value = float(sample.asr_confidence)
         elif (sample.transcript_source or "").lower() in {
-            "gold",
-            "manual",
-            "provided",
-            "scripted",
-            "official_prompt",
+            "gold", "manual", "provided", "scripted", "official_prompt",
         }:
             value = 1.0
         else:
@@ -200,9 +200,7 @@ def _load_embedding(
     if metadata.get("contract_sha256") != expected_contract_hash:
         raise ValueError(f"cache tensor contract mismatch: {path}")
     if vector.shape != (expected_dimension,):
-        raise ValueError(
-            f"cache tensor dimension mismatch at {path}: {tuple(vector.shape)}"
-        )
+        raise ValueError(f"cache tensor dimension mismatch at {path}: {tuple(vector.shape)}")
     vector = vector.float().contiguous()
     if not torch.isfinite(vector).all():
         raise ValueError(f"cache tensor contains non-finite values: {path}")
@@ -219,7 +217,7 @@ def load_real_cache_bundle(
     enabled_modalities: Sequence[str] = MODALITIES,
     quality_policy: str = "validated_metadata_v1",
 ) -> RealCacheBundle:
-    """Join a manifest with verified modality indexes and materialise split datasets."""
+    """Join a manifest with cache indexes for enabled modalities only."""
 
     root = Path(project_root).resolve()
     manifest = _inside_root(root, manifest_path, "manifest")
@@ -230,31 +228,37 @@ def load_real_cache_bundle(
         raise ValueError("manifest contains duplicate sample_id values")
     _check_speaker_exclusivity(samples)
 
-    enabled = tuple(str(value) for value in enabled_modalities)
-    if not enabled or len(set(enabled)) != len(enabled) or set(enabled) - set(MODALITIES):
-        raise ValueError(f"invalid enabled_modalities: {enabled}")
-    if set(input_dims) != set(MODALITIES) or any(int(input_dims[name]) <= 0 for name in MODALITIES):
-        raise ValueError("input_dims must define positive audio/text/visual dimensions")
-    if set(cache_sources) != set(MODALITIES):
-        raise ValueError("cache_sources must define audio, text, and visual")
+    requested = tuple(str(value) for value in enabled_modalities)
+    if not requested or len(set(requested)) != len(requested) or set(requested) - set(MODALITIES):
+        raise ValueError(f"invalid enabled_modalities: {requested}")
+    enabled = tuple(name for name in MODALITIES if name in requested)
+    unknown_dimensions = set(input_dims) - set(MODALITIES)
+    if unknown_dimensions:
+        raise ValueError(f"unsupported input dimensions: {sorted(unknown_dimensions)}")
+    missing_dimensions = set(enabled) - set(input_dims)
+    if missing_dimensions:
+        raise ValueError(f"missing enabled input dimensions: {sorted(missing_dimensions)}")
+    if any(int(input_dims[name]) <= 0 for name in input_dims):
+        raise ValueError("input dimensions must be positive")
+    dimensions = {name: int(input_dims.get(name, 1)) for name in MODALITIES}
+    unknown_sources = set(cache_sources) - set(MODALITIES)
+    if unknown_sources:
+        raise ValueError(f"unsupported cache sources: {sorted(unknown_sources)}")
+    missing_sources = set(enabled) - set(cache_sources)
+    if missing_sources:
+        raise ValueError(f"missing cache sources for enabled modalities: {sorted(missing_sources)}")
     if quality_policy != "validated_metadata_v1":
         raise ValueError(f"unsupported quality policy: {quality_policy}")
 
     index_rows: dict[str, dict[str, dict[str, Any]]] = {}
     contracts: dict[str, dict[str, Any]] = {}
     contract_hashes: dict[str, str] = {}
-    for modality in MODALITIES:
+    for modality in enabled:
         rows, contract, contract_hash = _validate_cache_source(
-            root,
-            modality,
-            cache_sources[modality],
-            manifest_hash,
-            int(input_dims[modality]),
+            root, modality, cache_sources[modality], manifest_hash, dimensions[modality]
         )
         available_ids = {
-            sample.sample_id
-            for sample in samples
-            if getattr(sample, f"{modality}_available")
+            sample.sample_id for sample in samples if getattr(sample, f"{modality}_available")
         }
         indexed_ids = set(rows)
         if indexed_ids != available_ids:
@@ -267,39 +271,57 @@ def load_real_cache_bundle(
         contracts[modality] = contract
         contract_hashes[modality] = contract_hash
 
-    visual_frames = int(contracts["visual"].get("frames_per_clip", 0))
-    if visual_frames <= 0:
-        raise ValueError("visual cache contract has invalid frames_per_clip")
+    visual_frames = 1
+    if "visual" in enabled:
+        visual_frames = int(contracts["visual"].get("frames_per_clip", 0))
+        if visual_frames <= 0:
+            raise ValueError("visual cache contract has invalid frames_per_clip")
 
     memo: dict[Path, torch.Tensor] = {}
     split_examples: dict[str, list[CachedExample]] = defaultdict(list)
-    qualities: dict[str, list[float]] = {name: [] for name in MODALITIES}
-    availability_counts = Counter()
+    qualities: dict[str, list[float]] = {name: [] for name in enabled}
+    active_availability = Counter()
+    manifest_availability = Counter()
+    language_counts = Counter()
+    corpus_counts = Counter()
+    transcript_hashes: set[str] = set()
+    speaker_counts: dict[str, set[str]] = defaultdict(set)
+    label_counts: dict[str, Counter[str]] = defaultdict(Counter)
     for sample in samples:
+        language_counts[sample.language] += 1
+        corpus_counts[sample.corpus] += 1
+        speaker_counts[sample.split].add(sample.speaker_id)
+        label_counts[sample.split][sample.emotion] += 1
+        if sample.transcript:
+            transcript_hashes.add(hashlib.sha256(sample.transcript.encode("utf-8")).hexdigest())
         mask_values: list[bool] = []
         quality_values: list[float] = []
         embeddings: dict[str, torch.Tensor] = {}
         for modality in MODALITIES:
             available = bool(getattr(sample, f"{modality}_available"))
+            if available:
+                manifest_availability[modality] += 1
             active = available and modality in enabled
-            row = index_rows[modality].get(sample.sample_id) if available else None
             if active:
-                assert row is not None
+                row = index_rows[modality].get(sample.sample_id)
+                if row is None:
+                    raise ValueError(f"missing {modality} cache row: {sample.sample_id}")
                 vector = _load_embedding(
                     row["_resolved_cache_path"],
-                    int(input_dims[modality]),
+                    dimensions[modality],
                     contract_hashes[modality],
                     memo,
                 )
                 quality = _metadata_quality(sample, modality, row, visual_frames)
-                availability_counts[modality] += 1
+                active_availability[modality] += 1
             else:
-                vector = torch.zeros(int(input_dims[modality]), dtype=torch.float32)
+                vector = torch.zeros(dimensions[modality], dtype=torch.float32)
                 quality = 0.0
             embeddings[modality] = vector
             mask_values.append(active)
             quality_values.append(quality)
-            qualities[modality].append(quality)
+            if modality in enabled:
+                qualities[modality].append(quality)
         if not any(mask_values):
             raise ValueError(f"sample has no enabled available modality: {sample.sample_id}")
         if sample.emotion not in labels:
@@ -336,9 +358,17 @@ def load_real_cache_bundle(
         "manifest_sha256": manifest_hash,
         "sample_count": len(samples),
         "split_counts": {key: len(value) for key, value in sorted(split_examples.items())},
+        "speaker_counts": {key: len(value) for key, value in sorted(speaker_counts.items())},
+        "label_counts": {
+            split: dict(sorted(counts.items())) for split, counts in sorted(label_counts.items())
+        },
+        "language_counts": dict(sorted(language_counts.items())),
+        "corpus_counts": dict(sorted(corpus_counts.items())),
+        "unique_transcript_count": len(transcript_hashes),
         "enabled_modalities": list(enabled),
-        "availability_counts": dict(availability_counts),
-        "input_dims": {name: int(input_dims[name]) for name in MODALITIES},
+        "availability_counts": dict(active_availability),
+        "manifest_availability_counts": dict(manifest_availability),
+        "input_dims": dimensions,
         "quality_policy": quality_policy,
         "quality_summary": quality_summary,
         "cache_contracts": {
@@ -347,7 +377,7 @@ def load_real_cache_bundle(
                 "resolved_revision": contracts[modality].get("resolved_revision"),
                 "contract_sha256": contract_hashes[modality],
             }
-            for modality in MODALITIES
+            for modality in enabled
         },
         "unique_cache_tensors_loaded": len(memo),
     }
