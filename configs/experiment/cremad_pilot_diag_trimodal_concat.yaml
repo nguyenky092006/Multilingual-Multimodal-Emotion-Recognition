@@ -1,0 +1,44 @@
+experiment_name: cremad_pilot_diag_concat_seed17
+pilot: true
+diagnostic: true
+seed: 17
+device: cuda
+epochs: 10
+early_stopping_patience: 4
+batch_size: 64
+learning_rate: 0.001
+weight_decay: 0.0001
+use_class_weights: true
+modality_dropout: 0.0
+output_dir: outputs/cremad_pilot/diagnostics/trimodal_concat_seed17
+labels_path: configs/data/labels.yaml
+data:
+  synthetic: false
+  manifest_path: data/manifests/cremad_pilot.jsonl
+  enabled_modalities: [audio, text, visual]
+  quality_policy: validated_metadata_v1
+  input_dims:
+    audio: 1024
+    text: 1024
+    visual: 768
+  caches:
+    audio:
+      index_path: data/cache/audio/cremad_pilot_xlsr300m/index.jsonl
+      contract_path: data/cache/audio/cremad_pilot_xlsr300m/cache_contract.json
+    text:
+      index_path: data/cache/text/qwen3_embedding_0.6b/indexes/cremad_pilot.jsonl
+      contract_path: data/cache/text/qwen3_embedding_0.6b/cache_contract.json
+      summary_path: data/cache/text/qwen3_embedding_0.6b/summaries/cremad_pilot.json
+    visual:
+      index_path: data/cache/visual/cremad_pilot_siglip_base_p16_224/index.jsonl
+      contract_path: data/cache/visual/cremad_pilot_siglip_base_p16_224/cache_contract.json
+model:
+  d_model: 64
+  projection_hidden: 128
+  adapter_bottleneck: 16
+  dropout: 0.1
+  fusion: concat
+  shared_adapter: true
+  routing_alpha: 0.5
+  languages: [en]
+  corpora: [crema-d]

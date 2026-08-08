@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 import torch
 from torch import Tensor, nn
@@ -53,6 +53,25 @@ def train_one_epoch(
     return total_loss / batch_count
 
 
+def _grouped_metrics(
+    targets: Sequence[int],
+    predictions: Sequence[int],
+    groups: Sequence[str],
+    num_classes: int,
+) -> dict[str, dict[str, object]]:
+    grouped: dict[str, list[int]] = defaultdict(list)
+    for index, group in enumerate(groups):
+        grouped[str(group)].append(index)
+    return {
+        name: classification_metrics(
+            [targets[index] for index in indices],
+            [predictions[index] for index in indices],
+            num_classes,
+        )
+        for name, indices in sorted(grouped.items())
+    }
+
+
 @torch.no_grad()
 def evaluate_model(
     model: TrimodalEmotionModel,
@@ -71,7 +90,11 @@ def evaluate_model(
     for raw_batch in loader:
         batch = _to_device(raw_batch, device)
         output = model(
-            batch["embeddings"], batch["modality_mask"], batch["languages"], batch["corpora"], batch["quality"]
+            batch["embeddings"],
+            batch["modality_mask"],
+            batch["languages"],
+            batch["corpora"],
+            batch["quality"],
         )
         logits = output["logits"]
         predictions.extend(logits.argmax(dim=-1).cpu().tolist())
@@ -81,11 +104,27 @@ def evaluate_model(
         languages.extend(batch["languages"])
         corpora.extend(batch["corpora"])
         emotions.extend(batch["emotions"])
+    if not targets:
+        raise ValueError("evaluation loader produced no batches")
     metrics = classification_metrics(targets, predictions, num_classes)
     weights = torch.cat(all_weights)
     modality_masks = torch.cat(masks)
+    patterns = [
+        "".join("ATV"[index] for index, flag in enumerate(row) if flag)
+        for row in modality_masks.tolist()
+    ]
+    metrics["group_metrics"] = {
+        "language": _grouped_metrics(targets, predictions, languages, num_classes),
+        "corpus": _grouped_metrics(targets, predictions, corpora, num_classes),
+        "modality_pattern": _grouped_metrics(targets, predictions, patterns, num_classes),
+    }
     metrics["fusion_weight_summary"] = model.summarise_fusion_weights(
         weights, languages, corpora, emotions, modality_masks
     )
-    metrics["unavailable_weight_max"] = float(weights.masked_select(~modality_masks).abs().max()) if (~modality_masks).any() else 0.0
+    metrics["fusion_weight_global_mean"] = weights.mean(dim=0).tolist()
+    metrics["unavailable_weight_max"] = (
+        float(weights.masked_select(~modality_masks).abs().max())
+        if (~modality_masks).any()
+        else 0.0
+    )
     return metrics

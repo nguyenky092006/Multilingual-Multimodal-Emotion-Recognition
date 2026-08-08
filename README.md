@@ -11,14 +11,15 @@ adapters, and reliability-aware fusion.
 - Speaker-exclusive CREMA-D full (64/14/13 actors) and pilot (8/2/2 actors) protocols.
 - Frozen XLS-R audio caching with 16 kHz waveform checks and masked-mean pooling.
 - Frozen Qwen3 text caching with exact-transcript deduplication and confounding audit.
-- Frozen SigLIP visual-cache framework with PyAV decoding, eight uniformly sampled
-  full frames, official image preprocessing, mean pooling, visual quality metadata, and
-  a verified 648-clip CREMA-D pilot aligned with the audio/text caches.
+- Frozen SigLIP visual caching with PyAV decoding, eight uniformly sampled full frames,
+  official image preprocessing, mean pooling, and visual quality metadata.
+- Strict manifest/cache/index/contract alignment for real cached training.
 - Three projections, modality adapters, a shared emotion adapter, and language/corpus
   residual routing.
 - Concatenation and reliability-aware gated fusion with exact zero weight for missing
   modalities.
-- UAR, macro-F1, accuracy, checkpoints, deterministic synthetic smoke runs, and tests.
+- UAR, macro-F1, accuracy, per-class/group metrics, class weights, early stopping,
+  checkpoints, reproducibility metadata, and deterministic offline tests.
 
 Prototypical meta-learning, face-crop features, and temporal visual attention remain
 later controlled experiments. Federated learning and conversational ERC are outside the
@@ -116,6 +117,42 @@ The baseline uses `google/siglip-base-patch16-224`, eight full RGB frames, and m
 pooling into one float32 768-D clip vector. Face crop is intentionally disabled until a
 later ablation. See `docs/visual_cache_protocol.md`.
 
+## Real cached training
+
+Run the short, explicitly non-paper-ready sanity experiment first:
+
+```powershell
+python scripts/train.py --config configs/experiment/cremad_pilot_sanity.yaml
+python scripts/evaluate.py --config configs/experiment/cremad_pilot_sanity.yaml
+```
+
+After auditing that output, the longer P2 pilot is:
+
+```powershell
+python scripts/train.py --config configs/experiment/cremad_pilot_p2.yaml
+python scripts/evaluate.py --config configs/experiment/cremad_pilot_p2.yaml
+```
+
+Both use speaker-exclusive 432/108/108 train/validation/test clips and write ignored
+artifacts under `outputs/cremad_pilot/`. They are marked `synthetic: false`,
+`pilot: true`, and `paper_ready: false`. See `docs/real_cached_training_protocol.md`.
+
+The first sanity run exposed zero neutral recall and strong visual-gate dominance, so
+run the diagnostic configurations before the longer P2 pilot:
+
+```powershell
+python scripts/train.py --config configs/experiment/cremad_pilot_diag_audio.yaml
+python scripts/train.py --config configs/experiment/cremad_pilot_diag_text.yaml
+python scripts/train.py --config configs/experiment/cremad_pilot_diag_visual.yaml
+python scripts/train.py --config configs/experiment/cremad_pilot_diag_audio_visual_concat.yaml
+python scripts/train.py --config configs/experiment/cremad_pilot_diag_trimodal_concat.yaml
+```
+
+These are diagnostic models, not parameter-fair paper baselines. Training summaries
+record a source/config snapshot hash and automatically flag zero-recall classes or a
+fusion modality exceeding 70% mean weight. The audio-visual diagnostic isolates whether
+the fixed-prompt text representation harms held-out generalization.
+
 ## Architecture
 
 Each cached frozen-encoder vector is projected to `d_model`, passed through a modality
@@ -131,7 +168,9 @@ audio–text-only paper configuration.
 - Speaker and original-video grouping precede train/test splitting.
 - Incompatible labels require explicit mappings.
 - Language–corpus confounding is reported rather than interpreted as a language effect.
+- CREMA-D text has only twelve official prompts and can encode prompt-frequency artifacts.
 - Full-frame visual features may encode identity/background shortcuts; face crops are a
   later controlled comparison.
-- Reference documents, datasets, model weights, caches, checkpoints, and credentials are
-  ignored by Git.
+- One English pilot corpus and one seed are never presented as paper-ready evidence.
+- Reference documents, datasets, model weights, caches, checkpoints, outputs, and
+  credentials are ignored by Git.

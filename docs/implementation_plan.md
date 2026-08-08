@@ -16,6 +16,7 @@
 
 ## Iteration 2 — in progress with explicit approval and real data
 
+- Implemented speaker-exclusive CREMA-D full and pilot manifests.
 - Implemented frozen XLS-R waveform cache extraction with pinned SafeTensor weights,
   masked-mean pooling, source hashes/quality metadata, atomic writes, resume, and a
   verified 648-clip CREMA-D pilot.
@@ -26,13 +27,26 @@
   PyAV decoding, eight uniform full frames, mean pooling, quality metadata, atomic
   writes, strict resume, offline fake-model tests, and a verified 648-clip CREMA-D pilot.
   Its sample IDs align exactly with the verified audio and text pilot caches.
-- Create corpus converters only for datasets the user has obtained legally.
+- Implemented strict real-cache assembly, manifest/cache/hash/dimension alignment,
+  metadata-derived bounded quality values, real checkpoint training/evaluation, early
+  stopping, class weights, grouped metrics, and separate sanity/longer pilot configs.
+- Completed the three-epoch real-data sanity run and checkpoint reload. Its neutral
+  recall collapse and 74.9% visual fusion weight motivated representation diagnostics.
+- Completed seed-17 audio, text, visual, audio-visual concat, and trimodal-concat
+  diagnostics. Visual-only leads held-out test UAR at 0.5193; trimodal concat reaches
+  0.5104, audio-visual concat 0.4717, and text-only 0.2827. The audio-visual result fell
+  from 0.6652 validation UAR, confirming that the two-speaker pilot is too variable for
+  fusion selection. Prepare the larger speaker split and repeated seeds before P2.
+- Create corpus converters only for additional datasets obtained legally.
 - Establish speaker/source-video group splits and run within-/cross-corpus baselines.
+- Add parameter-fair unimodal/bimodal/trimodal and adapter/fusion baselines, then run at
+  least three seeds.
 
 ## Iteration 3 — after supervised stability
 
 - Add episodic samplers and Prototypical Networks for zero-/1-/5-/10-shot evaluation.
 - Add temporal visual attention, face-crop, gold-vs-ASR, and missing-modality ablations.
 - Run at least three seeds and aggregate confidence intervals.
+- Run within-corpus, cross-corpus, and unseen-corpus protocols with confidence intervals.
 
 Federated learning and ERC remain separate future research projects.
