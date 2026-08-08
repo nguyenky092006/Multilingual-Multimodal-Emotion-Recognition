@@ -8,6 +8,7 @@ import math
 import os
 import re
 import time
+from functools import lru_cache
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
@@ -57,6 +58,7 @@ class VisualCacheResult:
 
 
 FrameDecoder = Callable[[Path, int], VisualClip]
+FaceCropper = Callable[[np.ndarray], np.ndarray | None]
 
 
 def file_sha256(path: str | Path) -> str:
@@ -152,6 +154,47 @@ def decode_uniform_frames(path: str | Path, frames_per_clip: int = 8) -> VisualC
     )
 
 
+@lru_cache(maxsize=1)
+def _opencv_face_detector() -> Any:
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError(
+            "face_crop=true requires the optional vision dependency: "
+            "python -m pip install -e \".[vision]\""
+        ) from exc
+    cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+    detector = cv2.CascadeClassifier(str(cascade_path))
+    if detector.empty():
+        raise RuntimeError(f"cannot load OpenCV face cascade: {cascade_path}")
+    return detector
+
+
+def opencv_haar_face_crop(frame: np.ndarray, margin: float = 0.15) -> np.ndarray | None:
+    """Return the largest detected face crop, or ``None`` for full-frame fallback."""
+
+    if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
+        raise ValueError("face crop input must be uint8 RGB [height,width,3]")
+    if margin < 0:
+        raise ValueError("face crop margin must be non-negative")
+    import cv2
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    detections = _opencv_face_detector().detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(24, 24)
+    )
+    if len(detections) == 0:
+        return None
+    x, y, width, height = max(detections, key=lambda item: int(item[2]) * int(item[3]))
+    padding = int(round(max(width, height) * margin))
+    left = max(0, int(x) - padding)
+    top = max(0, int(y) - padding)
+    right = min(frame.shape[1], int(x + width) + padding)
+    bottom = min(frame.shape[0], int(y + height) + padding)
+    crop = frame[top:bottom, left:right]
+    return crop.copy() if crop.size else None
+
+
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -227,6 +270,7 @@ def _existing_embedding(
     path: Path,
     expected_contract_hash: str,
     expected_dimension: int,
+    require_frame_embeddings: bool = False,
 ) -> tuple[bool, int]:
     if not path.is_file():
         return False, 0
@@ -238,10 +282,22 @@ def _existing_embedding(
             if metadata.get("contract_sha256") != expected_contract_hash:
                 return False, 0
             embedding = handle.get_tensor("embedding")
+            frame_embeddings = (
+                handle.get_tensor("frame_embeddings")
+                if require_frame_embeddings
+                else None
+            )
         if (
             embedding.ndim != 1
             or embedding.numel() != expected_dimension
             or not torch.isfinite(embedding).all()
+        ):
+            return False, 0
+        if frame_embeddings is not None and (
+            frame_embeddings.ndim != 2
+            or frame_embeddings.shape[0] <= 0
+            or frame_embeddings.shape[1] != expected_dimension
+            or not torch.isfinite(frame_embeddings).all()
         ):
             return False, 0
         return True, int(embedding.numel())
@@ -262,13 +318,16 @@ def cache_visual_embeddings(
     inference_precision: str = "float16",
     expected_embedding_dimension: int = 768,
     face_crop: bool = False,
+    face_crop_backend: str = "opencv_haar",
+    face_cropper: FaceCropper | None = None,
+    temporal_pooling: str = "mean",
     allow_download: bool = False,
     image_processor: Any | None = None,
     model: torch.nn.Module | None = None,
     resolved_revision: str | None = None,
     frame_decoder: FrameDecoder = decode_uniform_frames,
 ) -> VisualCacheResult:
-    """Cache mean-pooled SigLIP full-frame vectors with strict resume checks."""
+    """Cache pooled and optionally frame-level SigLIP representations."""
 
     if not inputs:
         raise ValueError("no visual samples selected")
@@ -281,8 +340,13 @@ def cache_visual_embeddings(
         raise ValueError("expected_embedding_dimension must be positive")
     if inference_precision not in {"float16", "float32"}:
         raise ValueError("inference_precision must be float16 or float32")
-    if face_crop:
-        raise NotImplementedError("face crop is a later ablation; the baseline is full-frame")
+    if temporal_pooling not in {"mean", "attention"}:
+        raise ValueError("temporal_pooling must be mean or attention")
+    if face_crop_backend != "opencv_haar":
+        raise ValueError("face_crop_backend must be opencv_haar")
+    if face_crop and face_cropper is None:
+        face_cropper = opencv_haar_face_crop
+    store_frame_embeddings = temporal_pooling == "attention"
 
     root = Path(project_root).resolve()
     manifest = Path(manifest_path)
@@ -325,16 +389,20 @@ def cache_visual_embeddings(
         "requested_revision": revision,
         "resolved_revision": resolved_revision,
         "frame_representation": "siglip_vision_pooler_output",
-        "temporal_pooling": "mean",
+        "temporal_pooling": "deferred_attention" if store_frame_embeddings else "mean",
         "frame_sampling": "uniform_full_clip_including_endpoints",
         "frames_per_clip": frames_per_clip,
-        "face_crop": False,
+        "face_crop": bool(face_crop),
         "decoder": "pyav",
         "inference_precision": inference_precision,
         "cache_dtype": "float32",
         "embedding_dimension": expected_embedding_dimension,
         "manifest_sha256": file_sha256(manifest),
     }
+    if face_crop:
+        contract["face_crop_backend"] = face_crop_backend
+    if store_frame_embeddings:
+        contract["stores_frame_embeddings"] = True
     contract_bytes = json.dumps(contract, sort_keys=True, separators=(",", ":")).encode("utf-8")
     contract_hash = hashlib.sha256(contract_bytes).hexdigest()
     contract_path = output / "cache_contract.json"
@@ -355,6 +423,7 @@ def cache_visual_embeddings(
             _cache_path(output, item.sample_id),
             contract_hash,
             expected_embedding_dimension,
+            store_frame_embeddings,
         )
         if valid:
             skipped += 1
@@ -370,6 +439,7 @@ def cache_visual_embeddings(
         source_paths: list[Path] = []
         flat_frames: list[np.ndarray] = []
         frame_counts: list[int] = []
+        face_detection_ratios: list[float] = []
         for item in batch_inputs:
             source = (root / item.video_path).resolve()
             try:
@@ -383,8 +453,18 @@ def cache_visual_embeddings(
                 raise ValueError(f"video produced no selected frames: {source}")
             clips.append(clip)
             source_paths.append(source)
-            flat_frames.extend(clip.frames)
+            selected_frames: list[np.ndarray] = []
+            detected = 0
+            for frame in clip.frames:
+                crop = face_cropper(frame) if face_cropper is not None else None
+                if crop is not None:
+                    selected_frames.append(crop)
+                    detected += 1
+                else:
+                    selected_frames.append(frame)
+            flat_frames.extend(selected_frames)
             frame_counts.append(len(clip.frames))
+            face_detection_ratios.append(detected / len(clip.frames))
 
         encoded = image_processor(images=flat_frames, return_tensors="pt")
         pixel_values = encoded["pixel_values"].to(target_device)
@@ -398,8 +478,11 @@ def cache_visual_embeddings(
             frame_embeddings = _pooled_frame_output(outputs)
         if frame_embeddings.shape[0] != len(flat_frames):
             raise RuntimeError("visual encoder output count does not match selected frame count")
-        splits = torch.split(frame_embeddings, frame_counts, dim=0)
-        pooled = torch.stack([part.mean(dim=0) for part in splits]).detach().float().cpu()
+        splits = tuple(
+            part.detach().float().cpu()
+            for part in torch.split(frame_embeddings, frame_counts, dim=0)
+        )
+        pooled = torch.stack([part.mean(dim=0) for part in splits])
         if pooled.shape != (len(batch_inputs), expected_embedding_dimension):
             raise RuntimeError(f"unexpected pooled visual shape: {tuple(pooled.shape)}")
         if not torch.isfinite(pooled).all():
@@ -408,8 +491,8 @@ def cache_visual_embeddings(
 
         from safetensors.torch import save_file
 
-        for index, (item, clip, source) in enumerate(
-            zip(batch_inputs, clips, source_paths, strict=True)
+        for index, (item, clip, source, face_ratio) in enumerate(
+            zip(batch_inputs, clips, source_paths, face_detection_ratios, strict=True)
         ):
             target = _cache_path(output, item.sample_id)
             temporary = target.with_suffix(f".{os.getpid()}.safetensors.tmp")
@@ -430,10 +513,14 @@ def cache_visual_embeddings(
                 ),
                 "mean_brightness": f"{clip.mean_brightness:.9g}",
                 "mean_gradient_energy": f"{clip.mean_gradient_energy:.9g}",
-                "face_crop": "false",
+                "face_crop": str(bool(face_crop)).lower(),
+                "detected_face_ratio": f"{face_ratio:.9g}",
                 "contract_sha256": contract_hash,
             }
-            save_file({"embedding": pooled[index].contiguous()}, temporary, metadata=metadata)
+            tensors = {"embedding": pooled[index].contiguous()}
+            if store_frame_embeddings:
+                tensors["frame_embeddings"] = splits[index].contiguous()
+            save_file(tensors, temporary, metadata=metadata)
             os.replace(temporary, target)
             processed += 1
 
@@ -446,6 +533,7 @@ def cache_visual_embeddings(
             path,
             contract_hash,
             expected_embedding_dimension,
+            store_frame_embeddings,
         )
         if not valid:
             raise RuntimeError(f"cache record failed post-write validation: {path}")

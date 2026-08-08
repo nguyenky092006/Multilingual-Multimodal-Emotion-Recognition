@@ -13,16 +13,20 @@ from safetensors import safe_open
 from mmer.encoders.audio import (
     AudioCacheInput,
     cache_audio_embeddings,
+    attentive_statistics,
     masked_mean,
+    masked_statistics,
     read_pcm16_mono,
 )
 
 
-def _write_wav(path: Path, values: np.ndarray, sample_rate: int = 16_000) -> None:
+def _write_wav(
+    path: Path, values: np.ndarray, sample_rate: int = 16_000, channels: int = 1
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     pcm = np.clip(values * 32768.0, -32768, 32767).astype("<i2")
     with wave.open(str(path), "wb") as stream:
-        stream.setnchannels(1)
+        stream.setnchannels(channels)
         stream.setsampwidth(2)
         stream.setframerate(sample_rate)
         stream.writeframes(pcm.tobytes())
@@ -50,13 +54,16 @@ class FakeModel(torch.nn.Module):
         assert length == attention_mask.shape[1]
         return attention_mask.bool()
 
-    def forward(self, input_values, attention_mask, **kwargs):
+    def forward(self, input_values, attention_mask, output_hidden_states=False, **kwargs):
         del attention_mask, kwargs
         hidden = torch.stack((input_values, input_values * 2.0, input_values * 3.0), dim=-1)
-        return SimpleNamespace(last_hidden_state=hidden)
+        return SimpleNamespace(
+            last_hidden_state=hidden,
+            hidden_states=(hidden * 0.5, hidden) if output_hidden_states else None,
+        )
 
 
-def test_read_pcm16_mono_and_reject_wrong_rate(tmp_path: Path):
+def test_read_pcm16_downmixes_and_resamples(tmp_path: Path):
     path = tmp_path / "audio.wav"
     _write_wav(path, np.array([0.0, 0.25, -0.5, 0.99999], dtype=np.float32))
     signal = read_pcm16_mono(path)
@@ -67,14 +74,27 @@ def test_read_pcm16_mono_and_reject_wrong_rate(tmp_path: Path):
 
     wrong_rate = tmp_path / "wrong.wav"
     _write_wav(wrong_rate, np.ones(20, dtype=np.float32) * 0.1, sample_rate=8_000)
-    with pytest.raises(ValueError, match="sample rate"):
-        read_pcm16_mono(wrong_rate)
+    resampled = read_pcm16_mono(wrong_rate)
+    assert resampled.source_sample_rate == 8_000
+    assert resampled.sample_rate == 16_000
+    assert len(resampled.waveform) == 40
+
+    stereo = tmp_path / "stereo.wav"
+    channels = np.stack((np.ones(8) * 0.5, np.ones(8) * -0.5), axis=1).astype(np.float32)
+    _write_wav(stereo, channels, channels=2)
+    downmixed = read_pcm16_mono(stereo)
+    assert downmixed.source_channels == 2
+    assert np.max(np.abs(downmixed.waveform)) < 1e-4
 
 
 def test_masked_mean_excludes_padding():
     hidden = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [100.0, 200.0]]])
     mask = torch.tensor([[1, 1, 0]], dtype=torch.bool)
     assert torch.equal(masked_mean(hidden, mask), torch.tensor([[2.0, 3.0]]))
+    statistics = masked_statistics(hidden, mask)
+    attentive = attentive_statistics(hidden, mask)
+    assert statistics.shape == attentive.shape == (1, 4)
+    assert torch.isfinite(statistics).all() and torch.isfinite(attentive).all()
 
 
 def test_audio_cache_is_safe_and_resumable(tmp_path: Path):
@@ -148,3 +168,31 @@ def test_cache_contract_mismatch_requires_new_directory(tmp_path: Path):
     cache_audio_embeddings(**common)
     with pytest.raises(RuntimeError, match="cache contract differs"):
         cache_audio_embeddings(**{**common, "revision": "two", "resolved_revision": "two"})
+
+
+def test_audio_chunking_hidden_layer_and_statistics_pooling(tmp_path: Path):
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text("{}\n", encoding="utf-8")
+    audio = tmp_path / "long.wav"
+    _write_wav(audio, np.linspace(-0.4, 0.4, 400, dtype=np.float32))
+    result = cache_audio_embeddings(
+        inputs=[AudioCacheInput("sample", "long.wav")],
+        project_root=tmp_path,
+        output_dir="cache_stats",
+        manifest_path=manifest,
+        identifier="fake/xlsr",
+        device="cpu",
+        inference_precision="float32",
+        max_duration_seconds=0.01,
+        duration_policy="chunk",
+        chunk_overlap_seconds=0.002,
+        pooling="attentive_statistics",
+        hidden_layer=0,
+        feature_extractor=FakeFeatureExtractor(),
+        model=FakeModel(),
+        resolved_revision="fake-revision",
+    )
+    assert result.embedding_dimension == 6
+    with safe_open(result.output_dir / "embeddings" / "sample.safetensors", framework="pt") as handle:
+        assert handle.get_tensor("embedding").shape == (6,)
+        assert int(handle.metadata()["chunk_count"]) > 1

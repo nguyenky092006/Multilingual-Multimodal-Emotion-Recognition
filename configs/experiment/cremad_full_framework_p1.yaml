@@ -1,0 +1,45 @@
+experiment_name: cremad_full_framework_p1_seed17
+track: framework_p1_engineering
+pilot: false
+diagnostic: true
+seed: 17
+device: cuda
+epochs: 30
+early_stopping_patience: 7
+batch_size: 64
+learning_rate: 0.001
+weight_decay: 0.0001
+use_class_weights: true
+modality_dropout: 0.15
+output_dir: outputs/cremad_full/framework/p1_seed17
+labels_path: configs/data/labels.yaml
+data:
+  synthetic: false
+  manifest_path: data/manifests/cremad_full.jsonl
+  enabled_modalities: [audio, text]
+  quality_policy: validated_metadata_v1
+  input_dims:
+    audio: 1024
+    text: 1024
+  caches:
+    audio:
+      index_path: data/cache/audio/cremad_full_xlsr300m/index.jsonl
+      contract_path: data/cache/audio/cremad_full_xlsr300m/cache_contract.json
+    text:
+      index_path: data/cache/text/qwen3_embedding_0.6b/indexes/cremad_full.jsonl
+      contract_path: data/cache/text/qwen3_embedding_0.6b/cache_contract.json
+      summary_path: data/cache/text/qwen3_embedding_0.6b/summaries/cremad_full.json
+model:
+  d_model: 64
+  projection_hidden: 128
+  adapter_bottleneck: 16
+  dropout: 0.2
+  fusion: reliability
+  use_modality_adapters: true
+  emotion_adapter_mode: shared
+  use_routed_adapters: true
+  use_metadata_embeddings: false
+  routing_alpha: 0.5
+  metadata_alpha: 0.5
+  languages: [en]
+  corpora: [crema-d]

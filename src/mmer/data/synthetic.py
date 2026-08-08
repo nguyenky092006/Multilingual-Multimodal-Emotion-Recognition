@@ -16,6 +16,7 @@ def make_synthetic_dataset(
     input_dims: Mapping[str, int],
     seed: int,
     labels: Mapping[str, int] | None = None,
+    split: str = "synthetic",
 ) -> CachedEmbeddingDataset:
     """Create learnable but non-scientific cached embeddings with missing modalities."""
 
@@ -61,6 +62,9 @@ def make_synthetic_dataset(
                 emotion=emotion,
                 language=language,
                 corpus=corpus,
+                speaker_id=f"{split}-speaker-{index // len(label_names):03d}",
+                split=split,
+                metadata={"transcript_source": "synthetic"},
             )
         )
     return CachedEmbeddingDataset(examples)

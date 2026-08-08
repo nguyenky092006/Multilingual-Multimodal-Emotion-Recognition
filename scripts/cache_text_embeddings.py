@@ -23,6 +23,7 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--allow-download", action="store_true")
+    parser.add_argument("--use-fallback", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -30,6 +31,14 @@ def main() -> int:
     manifest_path = args.manifest if args.manifest.is_absolute() else root / args.manifest
     config_path = args.config if args.config.is_absolute() else root / args.config
     config = load_yaml(config_path)["text"]
+    if args.use_fallback:
+        fallback = config.get("fallback")
+        if not isinstance(fallback, dict):
+            raise ValueError("text fallback configuration is missing")
+        config = {**config, **fallback}
+        default_output = Path("data/cache/text/qwen3_embedding_0.6b")
+        if args.output_dir == default_output:
+            args.output_dir = Path("data/cache/text/multilingual_minilm_l12_v2")
     samples = load_manifest(manifest_path)
     inputs = [
         TextCacheInput(
@@ -60,6 +69,8 @@ def main() -> int:
         "batch_size": args.batch_size or int(config.get("batch_size", 16)),
         "inference_precision": str(config.get("inference_precision", "bfloat16")),
         "allow_download": args.allow_download,
+        "fallback": args.use_fallback,
+        "pooling": str(config.get("pooling", "last_token")),
     }
     if args.dry_run:
         resolved["status"] = "validated; no model loaded and no weights downloaded"
@@ -79,6 +90,7 @@ def main() -> int:
         normalize_embeddings=bool(config.get("normalize_embeddings", True)),
         instruction=config.get("instruction"),
         expected_embedding_dimension=int(config.get("embedding_dimension", 1024)),
+        pooling=str(config.get("pooling", "last_token")),
         allow_download=args.allow_download,
     )
     payload = {**resolved, **asdict(result)}

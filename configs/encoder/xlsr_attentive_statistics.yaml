@@ -1,0 +1,13 @@
+audio:
+  identifier: facebook/wav2vec2-xls-r-300m
+  revision: e14e548dc8082338fa6e16f11ac95c532c0c6339
+  frozen: true
+  sample_rate: 16000
+  pooling: attentive_statistics
+  hidden_layer: -1
+  max_duration_seconds: 12.0
+  duration_policy: chunk
+  chunk_overlap_seconds: 1.0
+  batch_size: 2
+  inference_precision: float16
+  cache_dtype: float32

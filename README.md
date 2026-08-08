@@ -13,12 +13,20 @@ non-empty subset without creating modules or requiring caches for disabled modal
   routing, masked concatenation, and reliability-aware fusion.
 - UAR, macro-F1, accuracy, grouped metrics, early stopping, cache/checkpoint contract
   verification, and deterministic offline tests.
+- Balanced episodic sampling, Prototypical Networks, optional supervised contrastive
+  loss, and speaker-disjoint 1-/5-/10-shot evaluation with confidence intervals.
+- Optional metadata embeddings for the non-routed B4 comparison.
+- Parameter-budget-matched B5, trainable visual temporal attention, optional OpenCV
+  face crops, XLS-R mean/statistics pooling, and a smaller multilingual text fallback.
+- Mixed precision, gradient accumulation, registered ablations, missing-modality stress
+  evaluation, unseen-corpus enforcement, and reproducible three-seed sweeps.
 - True unimodal, bimodal, and trimodal execution. Disabled branches have zero fusion
   weight and contribute no model parameters.
 
-Prototypical meta-learning, supervised contrastive learning, face crops, and temporal
-visual attention are future controlled experiments. Federated learning and
-conversational ERC are outside the current scope.
+The framework code is complete for the requested independent-utterance MMER scope.
+Multilingual/unseen-corpus conclusions remain blocked until approved Mandarin and
+cross-corpus data are added and the registered runs are actually executed. Federated
+learning and conversational ERC are outside the current scope.
 
 The two Word documents describe an audio-text paper, while the later implementation
 prompt defines a reusable trimodal framework. Their naming and evidence boundaries are
@@ -86,6 +94,17 @@ python scripts/cache_visual_embeddings.py
 See `docs/audio_cache_protocol.md`, `docs/text_cache_protocol.md`, and
 `docs/visual_cache_protocol.md` for exact pooling, revision, dtype, and limitations.
 
+Optional extraction ablations use separate cache directories and never overwrite the
+baseline cache:
+
+```powershell
+python scripts/cache_audio_embeddings.py --config configs/encoder/xlsr_attentive_statistics.yaml
+python scripts/cache_visual_embeddings.py --config configs/encoder/siglip_temporal_attention.yaml
+python -m pip install -e ".[vision]"
+python scripts/cache_visual_embeddings.py --config configs/encoder/siglip_face_crop.yaml
+python scripts/cache_text_embeddings.py --use-fallback
+```
+
 ## Real cached experiments
 
 The existing trimodal sanity run remains an engineering check:
@@ -103,7 +122,32 @@ python scripts/evaluate.py --config configs/experiment/cremad_pilot_supervised_r
 ```
 
 `cremad_pilot_p2.yaml` remains only as a deprecated alias so old commands do not break.
-It is not the audio-text paper's P2, which requires future Prototypical Networks.
+It is not the audio-text paper's P2; use the explicitly named full-data meta config.
+
+The complete cached audio-text P3 engineering path is:
+
+```powershell
+python scripts/train.py --config configs/experiment/cremad_full_framework_p3_meta.yaml
+python scripts/evaluate.py --config configs/experiment/cremad_full_framework_p3_meta.yaml
+```
+
+It reports zero-shot plus speaker-disjoint 1-/5-/10-shot prototype metrics. CREMA-D is
+English and single-corpus, so this run is a software/engineering result rather than
+multilingual or unseen-corpus paper evidence. See `docs/meta_learning_protocol.md`.
+
+Run a registered ablation, compare P1/B5 parameter budgets, stress missing modalities,
+or repeat a frozen config over the required seeds with:
+
+```powershell
+python scripts/run_ablation.py --name no_reliability_gate --evaluate
+python scripts/compare_parameter_budgets.py configs/experiment/cremad_pilot_supervised_reliability.yaml configs/experiment/cremad_pilot_b5_parameter_matched_shared.yaml --max-relative-gap 0.001
+python scripts/stress_test_modalities.py --config configs/experiment/cremad_full_framework_p3_meta.yaml
+python scripts/run_seed_sweep.py --config configs/experiment/cremad_full_framework_p3_meta.yaml --seeds 17 23 41 --skip-completed
+```
+
+The executable baseline and ablation registries are in `configs/baseline/baselines.yaml`
+and `configs/ablation/ablations.yaml`. See `docs/framework_completion_audit.md` before
+interpreting any result.
 
 To verify that the paper-oriented audio-text path is independent from visual data, run:
 

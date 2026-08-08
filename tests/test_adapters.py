@@ -25,3 +25,19 @@ def test_router_maps_unknown_routes_explicitly():
     assert stats["language_usage"] == {"unknown": 2}
     assert stats["corpus_usage"] == {"unknown": 2}
     assert isinstance(stats["collapse_detected"], bool)
+
+
+def test_router_supports_language_and_corpus_ablation_independently():
+    language_only = AdapterRouter(
+        8, 2, ["en"], ["known"], use_corpus_adapters=False
+    )
+    _, language_stats = language_only(torch.randn(2, 8), ["en", "new"], ["known", "new"])
+    assert language_stats["language_usage"] == {"en": 1, "unknown": 1}
+    assert language_stats["corpus_usage"] == {}
+
+    corpus_only = AdapterRouter(
+        8, 2, ["en"], ["known"], use_language_adapters=False
+    )
+    _, corpus_stats = corpus_only(torch.randn(2, 8), ["en", "new"], ["known", "new"])
+    assert corpus_stats["language_usage"] == {}
+    assert corpus_stats["corpus_usage"] == {"known": 1, "unknown": 1}

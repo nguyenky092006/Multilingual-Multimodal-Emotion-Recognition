@@ -58,9 +58,10 @@ python scripts/train.py --config configs/experiment/cremad_pilot_supervised_reli
 python scripts/evaluate.py --config configs/experiment/cremad_pilot_supervised_reliability.yaml
 ```
 
-The former `cremad_pilot_p2.yaml` is only a deprecated alias. The term P2 in the paper
-documents means P1 plus Prototypical Networks and is not implemented yet. See
-`docs/spec_alignment.md`.
+The former `cremad_pilot_p2.yaml` is only a deprecated alias. The paper-oriented P2/P3
+episodic path is implemented by the explicit full framework configs; CREMA-D runs verify
+the engine but cannot establish multilingual or unseen-corpus claims. See
+`docs/spec_alignment.md` and `docs/meta_learning_protocol.md`.
 
 To test the audio-text path without visual data:
 
@@ -109,5 +110,5 @@ parameter counts, split/speaker/label/language/corpus counts, unique transcripts
 software versions, and diagnostic collapse flags. Evaluation refuses a checkpoint when
 its model, labels, manifest, or cache contracts differ from the active configuration.
 
-Paper-facing work still requires a multilingual dataset, repeated seeds, parameter-fair
-baselines, and later episodic training.
+Paper-facing work still requires approved multilingual/cross-corpus datasets and actual
+execution of the completed parameter-fair, episodic, ablation, and repeated-seed paths.

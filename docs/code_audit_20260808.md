@@ -17,19 +17,19 @@
 - Manifest validation now treats invalid splits, availability/path contradictions,
   invalid confidence/duration, root escapes, and speaker overlap across any pair of
   splits as blocking errors.
-- Previously ignored `mixed_precision: true` and gradient accumulation values now fail
-  explicitly instead of creating a misleading run. The repaired `small_gpu.yaml` is an
-  executable synthetic GPU smoke configuration.
+- Mixed precision now uses device-appropriate autocast and gradient accumulation handles
+  both complete and final partial windows. The repaired `small_gpu.yaml` is executable.
 - Audit metadata now records language, corpus, speaker, label, transcript, manifest
   availability, active availability, and enabled-cache summaries without hard-coded
   CREMA-D limitations.
 
-## Intentionally not implemented
+## Completed after the initial audit
 
-- Prototypical episodic training and supervised contrastive learning;
-- face crops and temporal visual attention;
-- metadata-embedding and parameter-matched adapter ablations;
-- claims that any current pilot result is paper-ready.
+- Prototypical episodic training and optional supervised contrastive learning;
+- optional face crops and trainable temporal visual attention;
+- metadata-embedding B4 and parameter-budget-matched B5;
+- registered component/encoder/missing-modality ablations and three-seed orchestration;
+- explicit unseen-test-corpus validation and metadata-sliced metrics.
 
-These are future research components, not defects in the verified cached supervised
-pipeline.
+The remaining blockers are datasets or unexecuted experiments, not missing architecture
+code. No current CREMA-D-only or single-seed output is promoted to paper-ready evidence.

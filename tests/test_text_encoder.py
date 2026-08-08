@@ -12,6 +12,7 @@ from mmer.encoders.text import (
     TextCacheInput,
     cache_text_embeddings,
     last_token_pool,
+    masked_mean_pool,
     prompt_label_audit,
 )
 
@@ -68,6 +69,12 @@ def test_last_token_pool_supports_left_and_right_padding():
     )
     left_mask = torch.tensor([[1, 1, 1], [0, 1, 1]])
     assert torch.equal(last_token_pool(left_hidden, left_mask), torch.tensor([[2.0], [4.0]]))
+
+
+def test_masked_mean_pool_excludes_padding_tokens():
+    hidden = torch.tensor([[[2.0], [4.0], [100.0]], [[3.0], [9.0], [15.0]]])
+    mask = torch.tensor([[1, 1, 0], [1, 1, 1]])
+    assert torch.equal(masked_mean_pool(hidden, mask), torch.tensor([[3.0], [9.0]]))
 
 
 def test_text_cache_deduplicates_maps_and_resumes(tmp_path: Path):

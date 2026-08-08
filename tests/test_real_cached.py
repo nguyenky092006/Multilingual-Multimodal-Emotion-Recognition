@@ -7,9 +7,11 @@ from pathlib import Path
 import pytest
 import torch
 import yaml
+from safetensors import safe_open
 from safetensors.torch import save_file
 
 from mmer.data.real_cached import load_real_cache_bundle
+from mmer.data.cached import collate_cached
 from mmer.real_runner import run_cached_evaluation, run_cached_training
 
 
@@ -127,6 +129,11 @@ def test_real_cache_bundle_aligns_splits_dimensions_and_quality(tmp_path: Path):
         DIMS,
     )
     assert bundle.audit["split_counts"] == {"test": 4, "train": 4, "validation": 4}
+    assert bundle.audit["split_corpus_counts"] == {
+        "test": {"fixture": 4},
+        "train": {"fixture": 4},
+        "validation": {"fixture": 4},
+    }
     assert bundle.audit["unique_cache_tensors_loaded"] == 36
     example = bundle.splits["train"][0]
     assert example.modality_mask.tolist() == [True, True, True]
@@ -151,6 +158,36 @@ def test_real_cache_bundle_rejects_speaker_leakage(tmp_path: Path):
     manifest, sources = _write_fixture(tmp_path, speaker_leakage=True)
     with pytest.raises(ValueError, match="speaker leakage"):
         load_real_cache_bundle(tmp_path, manifest, sources, LABELS, DIMS)
+
+
+def test_real_cache_bundle_loads_frame_level_visual_tensor(tmp_path: Path):
+    manifest, sources = _write_fixture(tmp_path)
+    visual_contract_path = tmp_path / sources["visual"]["contract_path"]
+    contract = json.loads(visual_contract_path.read_text(encoding="utf-8"))
+    contract["stores_frame_embeddings"] = True
+    contract["temporal_pooling"] = "deferred_attention"
+    visual_contract_path.write_text(json.dumps(contract, indent=2), encoding="utf-8")
+    contract_hash = _json_hash(contract)
+    visual_index = tmp_path / sources["visual"]["index_path"]
+    for row in [json.loads(line) for line in visual_index.read_text().splitlines()]:
+        path = tmp_path / row["cache_path"]
+        with safe_open(path, framework="pt", device="cpu") as handle:
+            embedding = handle.get_tensor("embedding").clone()
+        save_file(
+            {
+                "embedding": embedding,
+                "frame_embeddings": torch.stack([embedding, embedding + 0.1]),
+            },
+            path,
+            metadata={"contract_sha256": contract_hash},
+        )
+    sources["visual"]["tensor_key"] = "frame_embeddings"
+    bundle = load_real_cache_bundle(tmp_path, manifest, sources, LABELS, DIMS)
+    example = bundle.splits["train"][0]
+    assert example.embeddings["visual"].shape == (2, DIMS["visual"])
+    batch = collate_cached(bundle.splits["train"].examples)
+    assert batch["temporal_masks"]["visual"].shape == (4, 2)
+    assert bundle.audit["cache_contracts"]["visual"]["tensor_key"] == "frame_embeddings"
 
 
 def test_real_cached_runner_saves_and_reloads_checkpoint(tmp_path: Path):
@@ -203,9 +240,16 @@ def test_real_cached_runner_saves_and_reloads_checkpoint(tmp_path: Path):
     assert len(summary["source_snapshot_sha256"]) == 64
     assert "diagnostic_flags" in summary
     assert (tmp_path / summary["checkpoint_path"]).is_file()
-    metrics = run_cached_evaluation(config_path, project_root=tmp_path)
+    metrics = run_cached_evaluation(
+        config_path,
+        project_root=tmp_path,
+        modality_subsets=[["audio"], ["text", "visual"]],
+    )
     assert metrics["synthetic"] is False
     assert metrics["pilot"] is True
     assert metrics["checkpoint_epoch"] == 1
     assert metrics["source_snapshot_matches_checkpoint"] is True
     assert "group_metrics" in metrics
+    assert "transcript_source" in metrics["group_metrics"]
+    assert set(metrics["modality_stress"]) == {"audio", "text+visual"}
+    assert metrics["modality_stress"]["audio"]["forced_modality_subset"] == ["audio"]

@@ -8,4 +8,5 @@
 - Preserve the four-label mapping in `configs/data/labels.yaml`; incompatible source labels require an explicit mapping decision.
 - Frozen encoders and cache extraction are separate from adapter/fusion training.
 - Tests and the CPU smoke run must stay offline and deterministic.
-- ProtoNet and federated learning are intentionally outside the first implementation.
+- ProtoNet and supervised contrastive episodic learning are available only after the
+  verified cached-embedding pipeline. Federated learning remains outside this project.

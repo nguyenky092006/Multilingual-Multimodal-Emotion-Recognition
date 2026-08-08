@@ -61,7 +61,7 @@ def _manifest_hash(config: dict[str, Any]) -> str:
 def _model_kwargs(config: dict[str, Any], label_count: int) -> dict[str, Any]:
     model = config["model"]
     data = config["data"]
-    return {
+    kwargs = {
         "input_dims": data["input_dims"],
         "num_classes": label_count,
         "languages": model.get("languages", ["en", "zh"]),
@@ -78,6 +78,24 @@ def _model_kwargs(config: dict[str, Any], label_count: int) -> dict[str, Any]:
         "emotion_adapter_mode": model.get("emotion_adapter_mode"),
         "use_routed_adapters": bool(model.get("use_routed_adapters", True)),
     }
+    # Preserve the exact legacy checkpoint contract when the new B4 component is off.
+    if bool(model.get("use_metadata_embeddings", False)):
+        kwargs["use_metadata_embeddings"] = True
+        kwargs["metadata_alpha"] = float(model.get("metadata_alpha", 0.5))
+    for name in (
+        "modality_adapter_bottleneck",
+        "emotion_adapter_bottleneck",
+        "routed_adapter_bottleneck",
+        "temporal_attention_hidden",
+    ):
+        if model.get(name) is not None:
+            kwargs[name] = int(model[name])
+    if str(model.get("visual_temporal_pooling", "prepooled")) != "prepooled":
+        kwargs["visual_temporal_pooling"] = str(model["visual_temporal_pooling"])
+    for name in ("use_language_adapters", "use_corpus_adapters"):
+        if model.get(name) is False:
+            kwargs[name] = False
+    return kwargs
 
 
 def _validate_training_config(config: dict[str, Any]) -> None:
@@ -94,10 +112,11 @@ def _validate_training_config(config: dict[str, Any]) -> None:
     dropout = float(config.get("modality_dropout", 0.0))
     if not 0.0 <= dropout < 1.0:
         raise ValueError("modality_dropout must be in [0, 1)")
-    if int(config.get("gradient_accumulation_steps", 1)) != 1:
-        raise ValueError("gradient_accumulation_steps is not implemented; use 1")
-    if bool(config.get("mixed_precision", False)):
-        raise ValueError("mixed_precision training is not implemented for cached heads")
+    if int(config.get("gradient_accumulation_steps", 1)) <= 0:
+        raise ValueError("gradient_accumulation_steps must be positive")
+    precision = config.get("mixed_precision", False)
+    if precision not in {None, False, True, "none", "false", "float16", "bfloat16"}:
+        raise ValueError("mixed_precision must be false, true, float16, or bfloat16")
 
 
 def _loader(dataset: object, batch_size: int, shuffle: bool, seed: int) -> DataLoader:
@@ -128,11 +147,16 @@ def run_smoke_training(config_path: str | Path, project_root: str | Path = ".") 
     output_dir = _inside_root(root, config["output_dir"], "output directory")
     output_dir.mkdir(parents=True, exist_ok=True)
     dimensions = config["data"]["input_dims"]
-    train_set = make_synthetic_dataset(int(config["data"]["train_samples"]), dimensions, seed, labels)
-    validation_set = make_synthetic_dataset(
-        int(config["data"]["validation_samples"]), dimensions, seed + 1, labels
+    train_set = make_synthetic_dataset(
+        int(config["data"]["train_samples"]), dimensions, seed, labels, split="train"
     )
-    test_set = make_synthetic_dataset(int(config["data"]["test_samples"]), dimensions, seed + 2, labels)
+    validation_set = make_synthetic_dataset(
+        int(config["data"]["validation_samples"]), dimensions, seed + 1, labels,
+        split="validation",
+    )
+    test_set = make_synthetic_dataset(
+        int(config["data"]["test_samples"]), dimensions, seed + 2, labels, split="test"
+    )
     for name, dataset in (("train", train_set), ("validation", validation_set), ("test", test_set)):
         save_cache(dataset.examples, output_dir / f"synthetic_{name}_cache.pt")
     batch_size = int(config["batch_size"])
@@ -152,8 +176,16 @@ def run_smoke_training(config_path: str | Path, project_root: str | Path = ".") 
         loss = train_one_epoch(
             model, train_loader, optimizer, device, float(config.get("modality_dropout", 0.0)),
             dropout_generator=dropout_generator,
+            gradient_accumulation_steps=int(config.get("gradient_accumulation_steps", 1)),
+            mixed_precision=config.get("mixed_precision", False),
         )
-        validation_metrics = evaluate_model(model, validation_loader, device, len(labels))
+        validation_metrics = evaluate_model(
+            model,
+            validation_loader,
+            device,
+            len(labels),
+            mixed_precision=config.get("mixed_precision", False),
+        )
         history.append({"epoch": epoch, "train_loss": loss, "validation": validation_metrics})
         if validation_metrics["uar"] > best_uar:
             best_uar = float(validation_metrics["uar"])
@@ -173,6 +205,10 @@ def run_smoke_training(config_path: str | Path, project_root: str | Path = ".") 
         "label_mapping": labels,
         "manifest_hash": _manifest_hash(config),
         "parameter_counts": parameter_counts(model),
+        "optimization": {
+            "gradient_accumulation_steps": int(config.get("gradient_accumulation_steps", 1)),
+            "mixed_precision": config.get("mixed_precision", False),
+        },
         "training_seconds": time.perf_counter() - started,
         "checkpoint_path": checkpoint_path.relative_to(root).as_posix(),
         "history": history,
@@ -211,11 +247,18 @@ def run_smoke_evaluation(
     if metadata.get("model_kwargs") != kwargs or metadata.get("labels") != labels:
         raise ValueError("checkpoint model or label contract differs from configuration")
     test_set = make_synthetic_dataset(
-        int(config["data"]["test_samples"]), config["data"]["input_dims"], seed + 2, labels
+        int(config["data"]["test_samples"]), config["data"]["input_dims"], seed + 2, labels,
+        split="test",
     )
     test_loader = _loader(test_set, int(config["batch_size"]), False, seed)
     started = time.perf_counter()
-    metrics = evaluate_model(model, test_loader, device, len(labels))
+    metrics = evaluate_model(
+        model,
+        test_loader,
+        device,
+        len(labels),
+        mixed_precision=config.get("mixed_precision", False),
+    )
     metrics.update(
         {
             "synthetic": True,

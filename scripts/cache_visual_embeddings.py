@@ -82,6 +82,7 @@ def main() -> int:
         raise ValueError("manifest selection contains no available visual clips")
 
     frames_per_clip = int(config.get("frames_per_clip", 8))
+    temporal_pooling = str(config.get("temporal_pooling", config.get("pooling", "mean")))
     resolved = {
         "modality": "visual",
         "model_identifier": str(config["identifier"]),
@@ -94,6 +95,8 @@ def main() -> int:
         "frames_per_clip": frames_per_clip,
         "frame_sampling": str(config.get("frame_sampling", "uniform")),
         "face_crop": bool(config.get("face_crop", False)),
+        "face_crop_backend": str(config.get("face_crop_backend", "opencv_haar")),
+        "temporal_pooling": temporal_pooling,
         "inference_precision": str(config.get("inference_precision", "float16")),
         "allow_download": args.allow_download,
     }
@@ -119,6 +122,8 @@ def main() -> int:
         inference_precision=str(config.get("inference_precision", "float16")),
         expected_embedding_dimension=int(config.get("embedding_dimension", 768)),
         face_crop=bool(config.get("face_crop", False)),
+        face_crop_backend=str(config.get("face_crop_backend", "opencv_haar")),
+        temporal_pooling=temporal_pooling,
         allow_download=args.allow_download,
     )
     payload = {**resolved, **asdict(result)}

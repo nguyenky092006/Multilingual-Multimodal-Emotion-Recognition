@@ -11,10 +11,10 @@ The two Word documents define an English-Mandarin audio-and-transcript study:
 - P2: P1 plus Prototypical Networks;
 - P3: P2 plus a supervised contrastive objective.
 
-This track is not implemented end to end yet because no approved multilingual dataset,
-paper manifest, or paper cache contract is present in the repository. ProtoNet is also
-explicitly deferred by `AGENTS.md`. CREMA-D can only be an English external diagnostic;
-it cannot establish the multilingual claim.
+P1/P2/P3 are now executable on verified cached embeddings. The current configurations
+use CREMA-D only, however, because no approved multilingual dataset, paper manifest, or
+cross-corpus cache contract is present. They validate software behavior but cannot
+establish multilingual or unseen-corpus claims.
 
 ## Reusable framework track
 
@@ -23,9 +23,10 @@ audio, text, and visual streams:
 
 - F1: projections and hierarchical adapters with masked concatenation;
 - F2: F1 plus reliability-aware fusion;
-- F3: F2 plus future Prototypical Networks.
+- F3: F2 plus Prototypical Networks and optional supervised contrastive learning.
 
-The CREMA-D supervised reliability experiment implements F2. Visual is therefore an
+The CREMA-D supervised reliability experiment implements F2 and the generic episodic
+runner implements F3 for any enabled modality subset. Visual is therefore an
 intentional framework capability, not evidence that the paper documents specified a
 visual branch. The descriptive configuration is
 `configs/experiment/cremad_pilot_supervised_reliability.yaml`; the old
@@ -36,4 +37,5 @@ visual branch. The descriptive configuration is
 All current CREMA-D runs are pilot or engineering diagnostics. They are single-corpus,
 English-only, and use twelve fixed prompted transcripts. They must remain marked
 `paper_ready: false`. Paper-facing claims require a multilingual protocol, repeated
-seeds, parameter-fair baselines, and the later episodic implementation.
+seeds, parameter-fair baselines, approved English-Mandarin data, and an unseen-corpus
+protocol. The CREMA-D P1/P2/P3 files are deliberately marked engineering diagnostics.

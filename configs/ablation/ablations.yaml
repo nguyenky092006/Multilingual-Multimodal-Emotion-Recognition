@@ -1,0 +1,46 @@
+schema_version: 1
+default_base_config: configs/experiment/cremad_pilot_supervised_reliability.yaml
+ablations:
+  no_audio:
+    overrides:
+      data: {enabled_modalities: [text, visual]}
+  no_text:
+    overrides:
+      data: {enabled_modalities: [audio, visual]}
+  no_visual:
+    overrides:
+      data: {enabled_modalities: [audio, text]}
+  no_modality_adapters:
+    overrides:
+      model: {use_modality_adapters: false}
+  no_shared_adapter:
+    overrides:
+      model: {emotion_adapter_mode: none}
+  no_language_adapter:
+    overrides:
+      model: {use_language_adapters: false}
+  no_corpus_adapter:
+    overrides:
+      model: {use_corpus_adapters: false}
+  no_reliability_gate:
+    overrides:
+      model: {fusion: concat}
+  no_meta_learning:
+    base_config: configs/experiment/cremad_full_framework_p3_meta.yaml
+    overrides:
+      meta: {enabled: false}
+  parameter_matched_shared:
+    base_config: configs/experiment/cremad_pilot_b5_parameter_matched_shared.yaml
+  temporal_attention:
+    base_config: configs/experiment/cremad_pilot_ablation_temporal_attention.yaml
+    status: requires_frame_cache
+  face_crop:
+    base_config: configs/experiment/cremad_pilot_ablation_face_crop.yaml
+    status: requires_face_crop_cache
+  gold_vs_asr:
+    status: blocked_by_missing_paired_transcripts
+    reason: >-
+      Requires an approved manifest containing paired gold and ASR transcripts for the
+      same utterances; the framework must not fabricate this data.
+  missing_modality_stress:
+    status: use_stress_test_modalities_script

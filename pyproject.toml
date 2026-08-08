@@ -23,6 +23,7 @@ encoders = [
   "safetensors>=0.8,<0.9",
   "av>=18,<19",
 ]
+vision = ["opencv-python-headless>=4.10,<5"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

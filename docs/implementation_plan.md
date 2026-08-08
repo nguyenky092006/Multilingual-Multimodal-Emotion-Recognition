@@ -24,20 +24,35 @@
 - Historical seed-17 audio, text, visual, audio-visual, and trimodal diagnostics.
 - Clear separation between the audio-text paper specification and trimodal framework.
 
-## Next supervised work
+## Completed supervised framework components
 
-- Add legally obtained English/Mandarin data and corpus converters.
-- Establish speaker/source-video group splits for every new corpus.
-- Add complete parameter-fair experiment YAMLs for all unimodal/bimodal/trimodal and
-  adapter/fusion comparisons.
-- Run at least three seeds, then aggregate confidence intervals.
-- Add face-crop, temporal pooling, transcript-source, and missing-modality ablations.
+- Executable B1 unimodal, B2 bimodal, B3 concatenation, B4 metadata, B5
+  parameter-matched, P1, P2, and P3 configurations.
+- Audio resampling/downmixing, chunk policies, hidden-layer selection, masked mean, and
+  deterministic attentive-statistics pooling.
+- Full-frame mean, optional face-crop mean, and trainable frame-level temporal attention.
+- AMP/autocast, gradient accumulation, registered adapter/fusion/modality ablations,
+  missing-modality stress tests, and three-seed aggregation.
+- Metrics sliced by language, corpus, modality pattern, transcript source, country,
+  region, and accent when those fields exist.
 
-## Later paper/meta-learning work
+## Completed episodic framework engineering
 
-- Add episodic samplers and Prototypical Networks for zero-/1-/5-/10-shot evaluation.
-- Add the supervised contrastive extension only after ProtoNet is verified.
-- Run within-corpus, cross-corpus, and unseen-corpus protocols.
+- Balanced language/corpus episode sampling with no support/query utterance reuse.
+- Optional speaker-disjoint support/query sampling for validation and evaluation.
+- Cosine and squared-Euclidean Prototypical Networks.
+- Optional supervised contrastive loss over the pre-routing shared representation.
+- Zero-shot classifier evaluation plus 1-/5-/10-shot prototype evaluation.
+- Episode-level mean, standard deviation, 95% confidence interval, and provenance.
+- Metadata embeddings as the B4 implementation component.
 
-ProtoNet is intentionally outside the current supervised implementation. Federated
-learning and conversational ERC remain separate future projects.
+## Remaining paper work
+
+- Add legally obtained English/Mandarin corpora and corpus converters; no current code
+  fabricates or downloads unapproved research data.
+- Establish speaker/source-video groups and actual source/target corpus tasks.
+- Extract the optional ablation caches, then execute the registered matrix for seeds
+  17/23/41 and report mean/std/CI.
+- Add paired gold/ASR transcripts before executing that specific ablation.
+
+Federated learning and conversational ERC remain separate future projects.

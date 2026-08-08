@@ -1,5 +1,20 @@
-"""Reserved for iteration-3 Prototypical Networks.
+"""Episodic sampling, Prototypical Networks, and optional alignment losses."""
 
-Meta-learning is intentionally not implemented until the supervised cached-embedding
-pipeline has been validated on legally obtained real corpora.
-"""
+from .episodes import Episode, EpisodeSampler
+from .losses import supervised_contrastive_loss
+from .prototypical import (
+    PrototypicalResult,
+    class_prototypes,
+    prototypical_logits,
+    prototypical_loss,
+)
+
+__all__ = [
+    "Episode",
+    "EpisodeSampler",
+    "PrototypicalResult",
+    "class_prototypes",
+    "prototypical_logits",
+    "prototypical_loss",
+    "supervised_contrastive_loss",
+]

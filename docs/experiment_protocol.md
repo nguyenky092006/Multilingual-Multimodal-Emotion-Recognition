@@ -26,12 +26,12 @@ disabled modality has exactly zero weight.
 
 ## Baselines and ablations
 
-`configs/baseline/baselines.yaml` is a research registry, not an automatic preset
-expander. Every executed baseline needs a complete experiment YAML. Main comparisons
-should cover unimodal branches, all bimodal pairs, trimodal concatenation, hierarchical
-adapters, and reliability fusion with explicit parameter counts. Later controlled
-ablations cover metadata embeddings, parameter-matched adapters, visual pooling/crops,
-transcript source, and missing-modality stress tests.
+`configs/baseline/baselines.yaml` maps B1-B5/P1-P3 to complete experiment YAMLs.
+`configs/ablation/ablations.yaml` is executable through `scripts/run_ablation.py`; visual
+entries require their matching cache first, and gold-vs-ASR stays blocked until paired
+transcripts exist. `scripts/compare_parameter_budgets.py` checks B5 fairness,
+`scripts/stress_test_modalities.py` forces modality subsets, and
+`scripts/run_seed_sweep.py` runs/aggregates fixed seeds.
 
 The paper audio-text and reusable trimodal framework tracks use different stage names;
 see `docs/spec_alignment.md`.

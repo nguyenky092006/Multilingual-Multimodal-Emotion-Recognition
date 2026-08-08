@@ -69,6 +69,17 @@ def last_token_pool(hidden: Tensor, attention_mask: Tensor) -> Tensor:
     return hidden[batch_indices, positions]
 
 
+def masked_mean_pool(hidden: Tensor, attention_mask: Tensor) -> Tensor:
+    """Mean pool non-padding token states for smaller multilingual fallbacks."""
+
+    if hidden.ndim != 3 or attention_mask.shape != hidden.shape[:2]:
+        raise ValueError("hidden state and attention mask shapes are incompatible")
+    if not torch.all(attention_mask.sum(dim=1) > 0):
+        raise ValueError("text batch contains an empty token sequence")
+    weights = attention_mask.to(hidden.dtype).unsqueeze(-1)
+    return (hidden * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
+
+
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -225,6 +236,7 @@ def cache_text_embeddings(
     normalize_embeddings: bool = True,
     instruction: str | None = None,
     expected_embedding_dimension: int = 1024,
+    pooling: str = "last_token",
     allow_download: bool = False,
     tokenizer: Any | None = None,
     model: torch.nn.Module | None = None,
@@ -243,6 +255,8 @@ def cache_text_embeddings(
         raise ValueError("batch_size and max_length must be positive")
     if inference_precision not in {"bfloat16", "float32"}:
         raise ValueError("inference_precision must be bfloat16 or float32")
+    if pooling not in {"last_token", "masked_mean"}:
+        raise ValueError("text pooling must be last_token or masked_mean")
     root = Path(project_root).resolve()
     manifest = Path(manifest_path)
     manifest = (root / manifest).resolve() if not manifest.is_absolute() else manifest.resolve()
@@ -282,7 +296,7 @@ def cache_text_embeddings(
         "model_identifier": identifier,
         "requested_revision": revision,
         "resolved_revision": resolved_revision,
-        "pooling": "last_token",
+        "pooling": pooling,
         "padding_side": "left",
         "max_length": max_length,
         "inference_precision": inference_precision,
@@ -336,7 +350,11 @@ def cache_text_embeddings(
         attention_mask = encoded["attention_mask"]
         with torch.inference_mode():
             outputs = model(**encoded, output_hidden_states=False, return_dict=True)
-            pooled = last_token_pool(outputs.last_hidden_state, attention_mask)
+            pooled = (
+                last_token_pool(outputs.last_hidden_state, attention_mask)
+                if pooling == "last_token"
+                else masked_mean_pool(outputs.last_hidden_state, attention_mask)
+            )
         pooled = pooled.detach().float().cpu()
         if normalize_embeddings:
             pooled = functional.normalize(pooled, p=2, dim=1)

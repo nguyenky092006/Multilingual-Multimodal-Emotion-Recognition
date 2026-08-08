@@ -45,3 +45,31 @@ def test_one_cpu_training_and_evaluation_step():
     metrics = evaluate_model(network, loader, torch.device("cpu"), 4)
     assert set(("uar", "macro_f1", "accuracy", "fusion_weight_summary")) <= set(metrics)
     assert metrics["unavailable_weight_max"] == 0.0
+
+
+def test_gradient_accumulation_and_cpu_bfloat16_training():
+    dataset = make_synthetic_dataset(16, DIMS, seed=29)
+    for example in dataset.examples:
+        example.modality_mask[:] = True
+    loader = DataLoader(dataset, batch_size=4, collate_fn=collate_cached)
+    network = make_model()
+    optimizer = torch.optim.AdamW(network.parameters(), lr=1e-3)
+    loss = train_one_epoch(
+        network,
+        loader,
+        optimizer,
+        torch.device("cpu"),
+        gradient_accumulation_steps=2,
+        mixed_precision="bfloat16",
+    )
+    assert torch.isfinite(torch.tensor(loss))
+    metrics = evaluate_model(
+        network,
+        loader,
+        torch.device("cpu"),
+        4,
+        modality_subset=["audio", "text"],
+        mixed_precision="bfloat16",
+    )
+    assert metrics["forced_modality_subset"] == ["audio", "text"]
+    assert metrics["unavailable_weight_max"] == 0.0

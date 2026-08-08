@@ -1,5 +1,6 @@
-"""Projection and trimodal classifier modules."""
+"""Projection, temporal pooling, and multimodal classifier modules."""
 
+from .temporal import MaskedTemporalMean, TemporalAttentionPool
 from .trimodal import TrimodalEmotionModel
 
-__all__ = ["TrimodalEmotionModel"]
+__all__ = ["MaskedTemporalMean", "TemporalAttentionPool", "TrimodalEmotionModel"]

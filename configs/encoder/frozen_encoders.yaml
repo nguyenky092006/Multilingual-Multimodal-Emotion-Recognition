@@ -6,13 +6,22 @@ audio:
   pooling: masked_mean
   hidden_layer: -1
   max_duration_seconds: 12.0
+  duration_policy: reject
+  chunk_overlap_seconds: 0.0
   batch_size: 2
   inference_precision: float16
   cache_dtype: float32
 text:
   identifier: Qwen/Qwen3-Embedding-0.6B
   revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
-  fallback_identifier: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  fallback:
+    identifier: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+    revision: null
+    pooling: masked_mean
+    max_length: 128
+    inference_precision: float32
+    embedding_dimension: 384
+    instruction: null
   frozen: true
   pooling: last_token
   preserve_original_language: true
@@ -34,7 +43,9 @@ visual:
   frames_per_clip: 8
   frame_representation: vision_pooler_output
   pooling: mean
+  temporal_pooling: mean
   face_crop: false
+  face_crop_backend: opencv_haar
   image_size: 224
   batch_size: 2
   inference_precision: float16

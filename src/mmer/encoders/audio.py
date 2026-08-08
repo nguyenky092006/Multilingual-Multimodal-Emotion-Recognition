@@ -34,6 +34,8 @@ class AudioCacheInput:
 class AudioSignal:
     waveform: np.ndarray
     sample_rate: int
+    source_sample_rate: int
+    source_channels: int
     duration_seconds: float
     rms: float
     peak: float
@@ -60,7 +62,7 @@ def file_sha256(path: str | Path) -> str:
 
 
 def read_pcm16_mono(path: str | Path, expected_sample_rate: int = 16_000) -> AudioSignal:
-    """Read an uncompressed mono PCM16 WAV without optional audio dependencies."""
+    """Read PCM16 WAV, downmix channels, and linearly resample when required."""
 
     source = Path(path)
     try:
@@ -73,22 +75,30 @@ def read_pcm16_mono(path: str | Path, expected_sample_rate: int = 16_000) -> Aud
             payload = stream.readframes(frames)
     except (EOFError, OSError, wave.Error) as exc:
         raise ValueError(f"cannot decode WAV {source}: {exc}") from exc
-    if channels != 1:
-        raise ValueError(f"audio must be mono, got {channels} channels: {source}")
+    if channels <= 0:
+        raise ValueError(f"audio has invalid channel count {channels}: {source}")
     if sample_width != 2 or compression != "NONE":
         raise ValueError(f"audio must be uncompressed PCM16: {source}")
+    interleaved = np.frombuffer(payload, dtype="<i2").astype(np.float32) / 32768.0
+    if interleaved.size % channels:
+        raise ValueError(f"audio payload is not divisible by {channels} channels: {source}")
+    waveform = interleaved.reshape(-1, channels).mean(axis=1, dtype=np.float32)
+    if waveform.size == 0:
+        raise ValueError(f"audio contains no samples: {source}")
     if sample_rate != expected_sample_rate:
-        raise ValueError(
-            f"audio sample rate must be {expected_sample_rate}, got {sample_rate}: {source}"
-        )
-    waveform = np.frombuffer(payload, dtype="<i2").astype(np.float32) / 32768.0
+        target_length = max(1, int(round(waveform.size * expected_sample_rate / sample_rate)))
+        source_positions = np.arange(waveform.size, dtype=np.float64)
+        target_positions = np.linspace(0.0, max(0, waveform.size - 1), target_length)
+        waveform = np.interp(target_positions, source_positions, waveform).astype(np.float32)
     if waveform.size == 0 or not np.isfinite(waveform).all():
         raise ValueError(f"audio contains no finite samples: {source}")
     square_mean = float(np.mean(np.square(waveform, dtype=np.float64)))
     return AudioSignal(
         waveform=waveform,
-        sample_rate=sample_rate,
-        duration_seconds=float(waveform.size / sample_rate),
+        sample_rate=expected_sample_rate,
+        source_sample_rate=sample_rate,
+        source_channels=channels,
+        duration_seconds=float(waveform.size / expected_sample_rate),
         rms=math.sqrt(square_mean),
         peak=float(np.max(np.abs(waveform))),
         clipping_fraction=float(np.mean(np.abs(waveform) >= (32767.0 / 32768.0))),
@@ -107,6 +117,71 @@ def masked_mean(hidden: Tensor, mask: Tensor | None) -> Tensor:
     weights = mask.to(device=hidden.device, dtype=hidden.dtype).unsqueeze(-1)
     denominator = weights.sum(dim=1).clamp_min(1.0)
     return (hidden * weights).sum(dim=1) / denominator
+
+
+def masked_statistics(hidden: Tensor, mask: Tensor | None) -> Tensor:
+    """Concatenate masked mean and standard deviation over time."""
+
+    if hidden.ndim != 3:
+        raise ValueError("hidden state must have shape [batch,time,dim]")
+    valid = torch.ones(hidden.shape[:2], dtype=torch.bool, device=hidden.device) if mask is None else mask.bool()
+    if valid.shape != hidden.shape[:2] or (~valid).all(dim=1).any():
+        raise ValueError("statistics mask is invalid or contains an empty sequence")
+    weights = valid.to(hidden.dtype).unsqueeze(-1)
+    denominator = weights.sum(dim=1).clamp_min(1.0)
+    mean = (hidden * weights).sum(dim=1) / denominator
+    variance = ((hidden - mean.unsqueeze(1)).square() * weights).sum(dim=1) / denominator
+    return torch.cat([mean, variance.clamp_min(1e-8).sqrt()], dim=-1)
+
+
+def attentive_statistics(hidden: Tensor, mask: Tensor | None) -> Tensor:
+    """Deterministic energy-attentive mean/std pooling for frozen representations."""
+
+    if hidden.ndim != 3:
+        raise ValueError("hidden state must have shape [batch,time,dim]")
+    valid = torch.ones(hidden.shape[:2], dtype=torch.bool, device=hidden.device) if mask is None else mask.bool()
+    if valid.shape != hidden.shape[:2] or (~valid).all(dim=1).any():
+        raise ValueError("attention mask is invalid or contains an empty sequence")
+    logits = hidden.float().square().mean(dim=-1).to(hidden.dtype)
+    logits = logits.masked_fill(~valid, torch.finfo(logits.dtype).min)
+    weights = torch.softmax(logits, dim=1).masked_fill(~valid, 0.0).unsqueeze(-1)
+    mean = (hidden * weights).sum(dim=1)
+    variance = ((hidden - mean.unsqueeze(1)).square() * weights).sum(dim=1)
+    return torch.cat([mean, variance.clamp_min(1e-8).sqrt()], dim=-1)
+
+
+def pool_hidden(hidden: Tensor, mask: Tensor | None, pooling: str) -> Tensor:
+    if pooling == "masked_mean":
+        return masked_mean(hidden, mask)
+    if pooling == "statistics":
+        return masked_statistics(hidden, mask)
+    if pooling == "attentive_statistics":
+        return attentive_statistics(hidden, mask)
+    raise ValueError(f"unsupported audio pooling: {pooling}")
+
+
+def _chunk_waveform(
+    waveform: np.ndarray,
+    sample_rate: int,
+    max_duration_seconds: float,
+    duration_policy: str,
+    chunk_overlap_seconds: float,
+) -> list[np.ndarray]:
+    maximum = int(round(max_duration_seconds * sample_rate))
+    if maximum <= 0:
+        raise ValueError("max_duration_seconds must be positive")
+    if waveform.size <= maximum:
+        return [waveform]
+    if duration_policy == "reject":
+        raise ValueError("audio exceeds max_duration_seconds under reject policy")
+    if duration_policy == "truncate":
+        return [waveform[:maximum]]
+    overlap = int(round(chunk_overlap_seconds * sample_rate))
+    if duration_policy != "chunk" or overlap < 0 or overlap >= maximum:
+        raise ValueError("chunk policy requires 0 <= overlap < max duration")
+    step = maximum - overlap
+    chunks = [waveform[start : start + maximum] for start in range(0, waveform.size, step)]
+    return [chunk for chunk in chunks if chunk.size > 0]
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -200,6 +275,10 @@ def cache_audio_embeddings(
     batch_size: int = 2,
     sample_rate: int = 16_000,
     max_duration_seconds: float = 12.0,
+    duration_policy: str = "reject",
+    chunk_overlap_seconds: float = 0.0,
+    pooling: str = "masked_mean",
+    hidden_layer: int = -1,
     inference_precision: str = "float16",
     allow_download: bool = False,
     feature_extractor: Any | None = None,
@@ -217,6 +296,12 @@ def cache_audio_embeddings(
         raise ValueError("batch_size must be positive")
     if inference_precision not in {"float16", "float32"}:
         raise ValueError("inference_precision must be float16 or float32")
+    if duration_policy not in {"reject", "truncate", "chunk"}:
+        raise ValueError("duration_policy must be reject, truncate, or chunk")
+    if chunk_overlap_seconds < 0 or chunk_overlap_seconds >= max_duration_seconds:
+        raise ValueError("chunk_overlap_seconds must be in [0, max_duration_seconds)")
+    if pooling not in {"masked_mean", "statistics", "attentive_statistics"}:
+        raise ValueError("unsupported audio pooling")
     root = Path(project_root).resolve()
     manifest = Path(manifest_path)
     manifest = (root / manifest).resolve() if not manifest.is_absolute() else manifest.resolve()
@@ -253,13 +338,19 @@ def cache_audio_embeddings(
         "model_identifier": identifier,
         "requested_revision": revision,
         "resolved_revision": resolved_revision,
-        "pooling": "masked_mean",
+        "pooling": pooling,
         "sample_rate": sample_rate,
         "max_duration_seconds": max_duration_seconds,
         "inference_precision": inference_precision,
         "cache_dtype": "float32",
         "manifest_sha256": manifest_hash,
     }
+    if hidden_layer != -1:
+        contract["hidden_layer"] = int(hidden_layer)
+    if duration_policy != "reject":
+        contract["duration_policy"] = duration_policy
+        if duration_policy == "chunk":
+            contract["chunk_overlap_seconds"] = float(chunk_overlap_seconds)
     contract_bytes = json.dumps(contract, sort_keys=True, separators=(",", ":")).encode("utf-8")
     contract_hash = hashlib.sha256(contract_bytes).hexdigest()
     contract_path = output / "cache_contract.json"
@@ -289,6 +380,9 @@ def cache_audio_embeddings(
         batch_inputs = pending[offset : offset + batch_size]
         signals: list[AudioSignal] = []
         source_paths: list[Path] = []
+        segment_waveforms: list[np.ndarray] = []
+        segment_owners: list[int] = []
+        segment_counts: list[int] = []
         for item in batch_inputs:
             source = (root / item.audio_path).resolve()
             try:
@@ -296,15 +390,27 @@ def cache_audio_embeddings(
             except ValueError as exc:
                 raise ValueError(f"audio path is outside project root: {item.audio_path}") from exc
             signal = read_pcm16_mono(source, sample_rate)
-            if signal.duration_seconds > max_duration_seconds:
+            try:
+                segments = _chunk_waveform(
+                    signal.waveform,
+                    sample_rate,
+                    max_duration_seconds,
+                    duration_policy,
+                    chunk_overlap_seconds,
+                )
+            except ValueError as exc:
                 raise ValueError(
                     f"{item.sample_id} duration {signal.duration_seconds:.3f}s exceeds "
-                    f"{max_duration_seconds:.3f}s"
-                )
+                    f"{max_duration_seconds:.3f}s: {exc}"
+                ) from exc
             signals.append(signal)
             source_paths.append(source)
+            owner = len(signals) - 1
+            segment_waveforms.extend(segments)
+            segment_owners.extend([owner] * len(segments))
+            segment_counts.append(len(segments))
         encoded = feature_extractor(
-            [signal.waveform for signal in signals],
+            segment_waveforms,
             sampling_rate=sample_rate,
             padding=True,
             return_attention_mask=True,
@@ -323,12 +429,32 @@ def cache_audio_embeddings(
             outputs = model(
                 input_values=input_values,
                 attention_mask=attention_mask,
-                output_hidden_states=False,
+                output_hidden_states=hidden_layer != -1,
                 return_dict=True,
             )
-            hidden = outputs.last_hidden_state
-            pooled = masked_mean(hidden, _feature_mask(model, hidden, attention_mask))
-        pooled = pooled.detach().float().cpu()
+            if hidden_layer == -1:
+                hidden = outputs.last_hidden_state
+            else:
+                hidden_states = getattr(outputs, "hidden_states", None)
+                if hidden_states is None:
+                    raise RuntimeError("audio encoder did not return requested hidden states")
+                try:
+                    hidden = hidden_states[hidden_layer]
+                except IndexError as exc:
+                    raise ValueError(f"hidden_layer {hidden_layer} is out of range") from exc
+            segment_pooled = pool_hidden(
+                hidden, _feature_mask(model, hidden, attention_mask), pooling
+            )
+        sample_rows = [
+            segment_pooled[
+                torch.tensor(
+                    [index for index, value in enumerate(segment_owners) if value == owner],
+                    device=segment_pooled.device,
+                )
+            ].mean(dim=0)
+            for owner in range(len(signals))
+        ]
+        pooled = torch.stack(sample_rows).detach().float().cpu()
         if pooled.ndim != 2 or pooled.shape[0] != len(batch_inputs):
             raise RuntimeError(f"unexpected pooled embedding shape: {tuple(pooled.shape)}")
         if not torch.isfinite(pooled).all():
@@ -343,6 +469,9 @@ def cache_audio_embeddings(
                 "sample_id": item.sample_id,
                 "source_audio_path": item.audio_path,
                 "source_audio_sha256": file_sha256(source),
+                "source_sample_rate": str(signal.source_sample_rate),
+                "source_channels": str(signal.source_channels),
+                "chunk_count": str(segment_counts[index]),
                 "duration_seconds": f"{signal.duration_seconds:.9f}",
                 "rms": f"{signal.rms:.9g}",
                 "peak": f"{signal.peak:.9g}",

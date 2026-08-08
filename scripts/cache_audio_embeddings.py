@@ -50,6 +50,10 @@ def main() -> int:
         "device": args.device,
         "batch_size": args.batch_size or int(config.get("batch_size", 2)),
         "inference_precision": str(config.get("inference_precision", "float16")),
+        "pooling": str(config.get("pooling", "masked_mean")),
+        "hidden_layer": int(config.get("hidden_layer", -1)),
+        "duration_policy": str(config.get("duration_policy", "reject")),
+        "chunk_overlap_seconds": float(config.get("chunk_overlap_seconds", 0.0)),
         "allow_download": args.allow_download,
     }
     if args.dry_run:
@@ -67,6 +71,10 @@ def main() -> int:
         batch_size=args.batch_size or int(config.get("batch_size", 2)),
         sample_rate=int(config.get("sample_rate", 16_000)),
         max_duration_seconds=float(config.get("max_duration_seconds", 12.0)),
+        duration_policy=str(config.get("duration_policy", "reject")),
+        chunk_overlap_seconds=float(config.get("chunk_overlap_seconds", 0.0)),
+        pooling=str(config.get("pooling", "masked_mean")),
+        hidden_layer=int(config.get("hidden_layer", -1)),
         inference_precision=str(config.get("inference_precision", "float16")),
         allow_download=args.allow_download,
     )

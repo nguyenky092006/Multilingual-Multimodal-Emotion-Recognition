@@ -1,0 +1,16 @@
+visual:
+  identifier: google/siglip-base-patch16-224
+  revision: 559dc4dd2ab64df71cea758c5204a43113812dae
+  frozen: true
+  decoder: pyav
+  frame_sampling: uniform
+  frames_per_clip: 8
+  frame_representation: vision_pooler_output
+  temporal_pooling: attention
+  face_crop: false
+  face_crop_backend: opencv_haar
+  image_size: 224
+  batch_size: 2
+  inference_precision: float16
+  cache_dtype: float32
+  embedding_dimension: 768

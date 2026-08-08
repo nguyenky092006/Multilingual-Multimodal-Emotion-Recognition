@@ -111,6 +111,14 @@ def _validate_cache_source(
         raise ValueError(f"cache contract modality mismatch for {modality}: {contract_path}")
     if str(contract.get("cache_dtype")) != "float32":
         raise ValueError(f"{modality} cache must use float32 tensors")
+    tensor_key = str(specification.get("tensor_key", "embedding"))
+    if tensor_key not in {"embedding", "frame_embeddings"}:
+        raise ValueError(f"unsupported {modality} tensor_key: {tensor_key}")
+    if tensor_key == "frame_embeddings":
+        if modality != "visual" or contract.get("stores_frame_embeddings") is not True:
+            raise ValueError(
+                "frame_embeddings require a visual cache contract with stores_frame_embeddings"
+            )
     declared_dimension = _contract_dimension(contract)
     if declared_dimension is not None and declared_dimension != expected_dimension:
         raise ValueError(
@@ -187,24 +195,33 @@ def _load_embedding(
     path: Path,
     expected_dimension: int,
     expected_contract_hash: str,
-    memo: dict[Path, torch.Tensor],
+    memo: dict[tuple[Path, str], torch.Tensor],
+    tensor_key: str = "embedding",
 ) -> torch.Tensor:
-    if path in memo:
-        return memo[path]
+    memo_key = (path, tensor_key)
+    if memo_key in memo:
+        return memo[memo_key]
     try:
         with safe_open(path, framework="pt", device="cpu") as handle:
             metadata = handle.metadata() or {}
-            vector = handle.get_tensor("embedding").clone()
+            vector = handle.get_tensor(tensor_key).clone()
     except (OSError, RuntimeError, ValueError) as exc:
         raise ValueError(f"cannot load cache tensor {path}: {exc}") from exc
     if metadata.get("contract_sha256") != expected_contract_hash:
         raise ValueError(f"cache tensor contract mismatch: {path}")
-    if vector.shape != (expected_dimension,):
-        raise ValueError(f"cache tensor dimension mismatch at {path}: {tuple(vector.shape)}")
+    valid_shape = (
+        vector.shape == (expected_dimension,)
+        if tensor_key == "embedding"
+        else vector.ndim == 2 and vector.shape[0] > 0 and vector.shape[1] == expected_dimension
+    )
+    if not valid_shape:
+        raise ValueError(
+            f"cache tensor dimension mismatch at {path} key={tensor_key}: {tuple(vector.shape)}"
+        )
     vector = vector.float().contiguous()
     if not torch.isfinite(vector).all():
         raise ValueError(f"cache tensor contains non-finite values: {path}")
-    memo[path] = vector
+    memo[memo_key] = vector
     return vector
 
 
@@ -277,7 +294,11 @@ def load_real_cache_bundle(
         if visual_frames <= 0:
             raise ValueError("visual cache contract has invalid frames_per_clip")
 
-    memo: dict[Path, torch.Tensor] = {}
+    tensor_keys = {
+        modality: str(cache_sources[modality].get("tensor_key", "embedding"))
+        for modality in enabled
+    }
+    memo: dict[tuple[Path, str], torch.Tensor] = {}
     split_examples: dict[str, list[CachedExample]] = defaultdict(list)
     qualities: dict[str, list[float]] = {name: [] for name in enabled}
     active_availability = Counter()
@@ -287,11 +308,15 @@ def load_real_cache_bundle(
     transcript_hashes: set[str] = set()
     speaker_counts: dict[str, set[str]] = defaultdict(set)
     label_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    split_corpus_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    split_language_counts: dict[str, Counter[str]] = defaultdict(Counter)
     for sample in samples:
         language_counts[sample.language] += 1
         corpus_counts[sample.corpus] += 1
         speaker_counts[sample.split].add(sample.speaker_id)
         label_counts[sample.split][sample.emotion] += 1
+        split_corpus_counts[sample.split][sample.corpus] += 1
+        split_language_counts[sample.split][sample.language] += 1
         if sample.transcript:
             transcript_hashes.add(hashlib.sha256(sample.transcript.encode("utf-8")).hexdigest())
         mask_values: list[bool] = []
@@ -311,11 +336,16 @@ def load_real_cache_bundle(
                     dimensions[modality],
                     contract_hashes[modality],
                     memo,
+                    tensor_keys[modality],
                 )
                 quality = _metadata_quality(sample, modality, row, visual_frames)
                 active_availability[modality] += 1
             else:
-                vector = torch.zeros(dimensions[modality], dtype=torch.float32)
+                vector = (
+                    torch.zeros((1, dimensions[modality]), dtype=torch.float32)
+                    if tensor_keys.get(modality) == "frame_embeddings"
+                    else torch.zeros(dimensions[modality], dtype=torch.float32)
+                )
                 quality = 0.0
             embeddings[modality] = vector
             mask_values.append(active)
@@ -336,6 +366,15 @@ def load_real_cache_bundle(
                 emotion=sample.emotion,
                 language=sample.language,
                 corpus=sample.corpus,
+                speaker_id=sample.speaker_id,
+                split=sample.split,
+                metadata={
+                    "transcript_source": sample.transcript_source,
+                    "country": sample.country,
+                    "region": sample.region,
+                    "accent": sample.accent,
+                    "source_video_id": sample.source_video_id,
+                },
             )
         )
     required_splits = {"train", "validation", "test"}
@@ -364,6 +403,14 @@ def load_real_cache_bundle(
         },
         "language_counts": dict(sorted(language_counts.items())),
         "corpus_counts": dict(sorted(corpus_counts.items())),
+        "split_corpus_counts": {
+            split: dict(sorted(counts.items()))
+            for split, counts in sorted(split_corpus_counts.items())
+        },
+        "split_language_counts": {
+            split: dict(sorted(counts.items()))
+            for split, counts in sorted(split_language_counts.items())
+        },
         "unique_transcript_count": len(transcript_hashes),
         "enabled_modalities": list(enabled),
         "availability_counts": dict(active_availability),
@@ -376,6 +423,11 @@ def load_real_cache_bundle(
                 "identifier": contracts[modality].get("model_identifier"),
                 "resolved_revision": contracts[modality].get("resolved_revision"),
                 "contract_sha256": contract_hashes[modality],
+                **(
+                    {"tensor_key": tensor_keys[modality]}
+                    if tensor_keys[modality] != "embedding"
+                    else {}
+                ),
             }
             for modality in enabled
         },

@@ -20,9 +20,13 @@ from mmer.encoders.visual import (
 class FakeImageProcessor:
     def __call__(self, images, return_tensors):
         assert return_tensors == "pt"
-        values = torch.stack(
-            [torch.from_numpy(image.copy()).permute(2, 0, 1).float() / 255.0 for image in images]
-        )
+        rows = []
+        for image in images:
+            value = torch.from_numpy(image.copy()).permute(2, 0, 1).float() / 255.0
+            rows.append(torch.nn.functional.interpolate(
+                value.unsqueeze(0), size=(6, 8), mode="bilinear", align_corners=False
+            ).squeeze(0))
+        values = torch.stack(rows)
         return {"pixel_values": values}
 
 
@@ -125,26 +129,64 @@ def test_visual_cache_is_full_frame_safe_and_resumable(tmp_path: Path):
     assert [row["sample_id"] for row in rows] == ["sample-a", "sample-b"]
 
 
-def test_face_crop_is_not_silently_enabled(tmp_path: Path):
+def test_face_crop_uses_detector_and_full_frame_fallback(tmp_path: Path):
     manifest = tmp_path / "manifest.jsonl"
     manifest.write_text("{}\n", encoding="utf-8")
     video = tmp_path / "a.flv"
     video.write_bytes(b"fake")
-    with pytest.raises(NotImplementedError, match="later ablation"):
-        cache_visual_embeddings(
-            inputs=[VisualCacheInput("a", "a.flv")],
-            project_root=tmp_path,
-            output_dir="cache",
-            manifest_path=manifest,
-            identifier="fake/siglip",
-            device="cpu",
-            inference_precision="float32",
-            expected_embedding_dimension=4,
-            face_crop=True,
-            image_processor=FakeImageProcessor(),
-            model=FakeVisionModel(),
-            frame_decoder=_fake_decoder,
-        )
+    calls = 0
+
+    def cropper(frame):
+        nonlocal calls
+        calls += 1
+        return frame[1:-1, 1:-1] if calls % 2 else None
+
+    result = cache_visual_embeddings(
+        inputs=[VisualCacheInput("a", "a.flv")],
+        project_root=tmp_path,
+        output_dir="cache",
+        manifest_path=manifest,
+        identifier="fake/siglip",
+        device="cpu",
+        frames_per_clip=4,
+        inference_precision="float32",
+        expected_embedding_dimension=4,
+        face_crop=True,
+        face_cropper=cropper,
+        image_processor=FakeImageProcessor(),
+        model=FakeVisionModel(),
+        frame_decoder=_fake_decoder,
+    )
+    with safe_open(result.output_dir / "embeddings" / "a.safetensors", framework="pt") as handle:
+        assert handle.metadata()["face_crop"] == "true"
+        assert float(handle.metadata()["detected_face_ratio"]) == pytest.approx(0.5)
+
+
+def test_temporal_attention_cache_retains_frame_embeddings(tmp_path: Path):
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text("{}\n", encoding="utf-8")
+    video = tmp_path / "a.flv"
+    video.write_bytes(b"fake")
+    result = cache_visual_embeddings(
+        inputs=[VisualCacheInput("a", "a.flv")],
+        project_root=tmp_path,
+        output_dir="cache_frames",
+        manifest_path=manifest,
+        identifier="fake/siglip",
+        device="cpu",
+        frames_per_clip=4,
+        inference_precision="float32",
+        expected_embedding_dimension=4,
+        temporal_pooling="attention",
+        image_processor=FakeImageProcessor(),
+        model=FakeVisionModel(),
+        frame_decoder=_fake_decoder,
+    )
+    with safe_open(result.output_dir / "embeddings" / "a.safetensors", framework="pt") as handle:
+        assert handle.get_tensor("embedding").shape == (4,)
+        assert handle.get_tensor("frame_embeddings").shape == (4, 4)
+    contract = json.loads((result.output_dir / "cache_contract.json").read_text())
+    assert contract["stores_frame_embeddings"] is True
 
 
 def test_visual_cache_contract_mismatch_requires_new_directory(tmp_path: Path):

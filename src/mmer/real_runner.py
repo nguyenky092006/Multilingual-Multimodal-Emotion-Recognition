@@ -184,8 +184,16 @@ def run_cached_training(
             float(config.get("modality_dropout", 0.0)),
             class_weights=weights,
             dropout_generator=dropout_generator,
+            gradient_accumulation_steps=int(config.get("gradient_accumulation_steps", 1)),
+            mixed_precision=config.get("mixed_precision", False),
         )
-        validation_metrics = evaluate_model(model, validation_loader, device, len(labels))
+        validation_metrics = evaluate_model(
+            model,
+            validation_loader,
+            device,
+            len(labels),
+            mixed_precision=config.get("mixed_precision", False),
+        )
         history.append({"epoch": epoch, "train_loss": loss, "validation": validation_metrics})
         current_uar = float(validation_metrics["uar"])
         if current_uar > best_uar:
@@ -246,6 +254,10 @@ def run_cached_training(
         "label_mapping": labels,
         "data_audit": bundle.audit,
         "parameter_counts": parameter_counts(model),
+        "optimization": {
+            "gradient_accumulation_steps": int(config.get("gradient_accumulation_steps", 1)),
+            "mixed_precision": config.get("mixed_precision", False),
+        },
         "class_weights": None if weights is None else weights.detach().cpu().tolist(),
         "epochs_completed": len(history),
         "best_epoch": best_epoch,
@@ -270,6 +282,7 @@ def run_cached_evaluation(
     config_path: str | Path,
     checkpoint_path: str | Path | None = None,
     project_root: str | Path = ".",
+    modality_subsets: Sequence[Sequence[str]] | None = None,
 ) -> dict[str, Any]:
     """Reload a matching real-cache checkpoint and evaluate held-out speakers."""
 
@@ -277,7 +290,8 @@ def run_cached_evaluation(
     config_file, config = _resolve_config(config_path, root)
     current_source_snapshot = _source_snapshot_sha256(root, config_file)
     labels = load_label_mapping(_inside_root(root, config["labels_path"], "label mapping"))
-    seed_everything(int(config["seed"]))
+    seed = int(config["seed"])
+    seed_everything(seed)
     device = _device(config)
     bundle = _bundle(root, config, labels)
     path_value = checkpoint_path or Path(config["output_dir"]) / "best_checkpoint.pt"
@@ -305,7 +319,28 @@ def run_cached_evaluation(
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     started = time.perf_counter()
-    metrics = evaluate_model(model, loader, device, len(labels))
+    metrics = evaluate_model(
+        model,
+        loader,
+        device,
+        len(labels),
+        mixed_precision=config.get("mixed_precision", False),
+    )
+    if modality_subsets:
+        stress: dict[str, Any] = {}
+        for subset in modality_subsets:
+            key = "+".join(str(value) for value in subset)
+            if not key or key in stress:
+                raise ValueError("modality stress subsets must be non-empty and unique")
+            stress[key] = evaluate_model(
+                model,
+                _loader(bundle.splits["test"], int(config["batch_size"]), False, seed),
+                device,
+                len(labels),
+                modality_subset=list(subset),
+                mixed_precision=config.get("mixed_precision", False),
+            )
+        metrics["modality_stress"] = stress
     metrics.update(
         {
             "synthetic": False,

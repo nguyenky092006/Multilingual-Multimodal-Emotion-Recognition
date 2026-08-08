@@ -1,0 +1,65 @@
+experiment_name: cremad_full_framework_p2_meta_seed17
+track: framework_p2_engineering
+pilot: false
+diagnostic: true
+seed: 17
+device: cuda
+epochs: 20
+early_stopping_patience: 5
+batch_size: 64
+learning_rate: 0.0003
+weight_decay: 0.0001
+use_class_weights: false
+modality_dropout: 0.1
+output_dir: outputs/cremad_full/framework/p2_meta_seed17
+labels_path: configs/data/labels.yaml
+data:
+  synthetic: false
+  manifest_path: data/manifests/cremad_full.jsonl
+  enabled_modalities: [audio, text]
+  quality_policy: validated_metadata_v1
+  input_dims:
+    audio: 1024
+    text: 1024
+  caches:
+    audio:
+      index_path: data/cache/audio/cremad_full_xlsr300m/index.jsonl
+      contract_path: data/cache/audio/cremad_full_xlsr300m/cache_contract.json
+    text:
+      index_path: data/cache/text/qwen3_embedding_0.6b/indexes/cremad_full.jsonl
+      contract_path: data/cache/text/qwen3_embedding_0.6b/cache_contract.json
+      summary_path: data/cache/text/qwen3_embedding_0.6b/summaries/cremad_full.json
+model:
+  d_model: 64
+  projection_hidden: 128
+  adapter_bottleneck: 16
+  dropout: 0.2
+  fusion: reliability
+  use_modality_adapters: true
+  emotion_adapter_mode: shared
+  use_routed_adapters: true
+  use_metadata_embeddings: false
+  routing_alpha: 0.5
+  metadata_alpha: 0.5
+  languages: [en]
+  corpora: [crema-d]
+meta:
+  enabled: true
+  n_way: 4
+  k_shot: 5
+  query_per_class: 8
+  episodes_per_epoch: 50
+  validation_episodes: 50
+  evaluation_episodes: 100
+  task_field: corpus
+  disjoint_speakers_train: false
+  disjoint_speakers_validation: true
+  disjoint_speakers_test: true
+  distance: cosine
+  prototype_temperature: 0.1
+  lambda_classification: 1.0
+  lambda_episode: 1.0
+  lambda_supcon: 0.0
+  supcon_temperature: 0.1
+  evaluation_k_shots: [1, 5, 10]
+  primary_k_shot: 5

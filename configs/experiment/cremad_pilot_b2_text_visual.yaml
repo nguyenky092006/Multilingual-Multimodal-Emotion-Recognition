@@ -1,0 +1,40 @@
+experiment_name: cremad_pilot_b2_text_visual_seed17
+track: baseline_matrix
+pilot: true
+diagnostic: true
+seed: 17
+device: cuda
+epochs: 10
+early_stopping_patience: 4
+batch_size: 64
+learning_rate: 0.001
+weight_decay: 0.0001
+use_class_weights: true
+modality_dropout: 0.0
+output_dir: outputs/cremad_pilot/baselines/b2_text_visual_seed17
+labels_path: configs/data/labels.yaml
+data:
+  synthetic: false
+  manifest_path: data/manifests/cremad_pilot.jsonl
+  enabled_modalities: [text, visual]
+  quality_policy: validated_metadata_v1
+  input_dims: {text: 1024, visual: 768}
+  caches:
+    text:
+      index_path: data/cache/text/qwen3_embedding_0.6b/indexes/cremad_pilot.jsonl
+      contract_path: data/cache/text/qwen3_embedding_0.6b/cache_contract.json
+      summary_path: data/cache/text/qwen3_embedding_0.6b/summaries/cremad_pilot.json
+    visual:
+      index_path: data/cache/visual/cremad_pilot_siglip_base_p16_224/index.jsonl
+      contract_path: data/cache/visual/cremad_pilot_siglip_base_p16_224/cache_contract.json
+model:
+  d_model: 64
+  projection_hidden: 128
+  adapter_bottleneck: 16
+  dropout: 0.1
+  fusion: concat
+  use_modality_adapters: false
+  emotion_adapter_mode: none
+  use_routed_adapters: false
+  languages: [en]
+  corpora: [crema-d]

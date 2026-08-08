@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from mmer.config import load_yaml
+from mmer.meta_runner import run_meta_training
 from mmer.real_runner import run_cached_training
 from mmer.runner import run_smoke_training
 
@@ -20,7 +21,10 @@ def main() -> int:
     root = args.project_root.resolve()
     config_path = args.config if args.config.is_absolute() else root / args.config
     config = load_yaml(config_path)
-    if bool(config.get("data", {}).get("synthetic", False)):
+    meta = config.get("meta")
+    if isinstance(meta, dict) and bool(meta.get("enabled", False)):
+        summary = run_meta_training(args.config, root)
+    elif bool(config.get("data", {}).get("synthetic", False)):
         summary = run_smoke_training(args.config, root)
     else:
         summary = run_cached_training(args.config, root)

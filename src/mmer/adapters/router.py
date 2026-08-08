@@ -22,11 +22,15 @@ class AdapterRouter(nn.Module):
         corpora: Sequence[str],
         alpha: float = 0.5,
         dropout: float = 0.0,
+        use_language_adapters: bool = True,
+        use_corpus_adapters: bool = True,
     ) -> None:
         super().__init__()
+        if not use_language_adapters and not use_corpus_adapters:
+            raise ValueError("adapter router must enable language or corpus adapters")
         self.alpha = float(alpha)
-        self.language_keys = self._route_keys(languages)
-        self.corpus_keys = self._route_keys(corpora)
+        self.language_keys = self._route_keys(languages) if use_language_adapters else {}
+        self.corpus_keys = self._route_keys(corpora) if use_corpus_adapters else {}
         self.language_adapters = nn.ModuleDict(
             {key: ResidualAdapter(d_model, bottleneck, dropout) for key in self.language_keys.values()}
         )
@@ -72,10 +76,10 @@ class AdapterRouter(nn.Module):
     ) -> tuple[Tensor, dict[str, object]]:
         language_delta, language_usage, language_norms = self._apply_grouped(
             hidden, languages, self.language_keys, self.language_adapters
-        )
+        ) if self.language_keys else (torch.zeros_like(hidden), {}, {})
         corpus_delta, corpus_usage, corpus_norms = self._apply_grouped(
             hidden, corpora, self.corpus_keys, self.corpus_adapters
-        )
+        ) if self.corpus_keys else (torch.zeros_like(hidden), {}, {})
         output = self.output_norm(hidden + self.alpha * (language_delta + corpus_delta))
         all_norms = [*language_norms.values(), *corpus_norms.values()]
         stats: dict[str, object] = {

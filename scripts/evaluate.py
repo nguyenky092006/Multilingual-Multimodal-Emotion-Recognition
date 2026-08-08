@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from mmer.config import load_yaml
+from mmer.meta_runner import run_meta_evaluation
 from mmer.real_runner import run_cached_evaluation
 from mmer.runner import run_smoke_evaluation
 
@@ -21,7 +22,10 @@ def main() -> int:
     root = args.project_root.resolve()
     config_path = args.config if args.config.is_absolute() else root / args.config
     config = load_yaml(config_path)
-    if bool(config.get("data", {}).get("synthetic", False)):
+    meta = config.get("meta")
+    if isinstance(meta, dict) and bool(meta.get("enabled", False)):
+        metrics = run_meta_evaluation(args.config, args.checkpoint, root)
+    elif bool(config.get("data", {}).get("synthetic", False)):
         metrics = run_smoke_evaluation(args.config, args.checkpoint, root)
     else:
         metrics = run_cached_evaluation(args.config, args.checkpoint, root)

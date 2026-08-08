@@ -9,8 +9,9 @@ the SigLIP vision pooler outputs are averaged across valid frames. The resulting
 768-dimensional vector is saved as float32.
 
 This is a generic image-language representation, not a facial-expression-specific
-encoder. Face detection and face cropping are deliberately excluded from the baseline
-and remain a later ablation. No missing or corrupt video is replaced with fabricated
+encoder. The baseline remains full-frame mean pooling. Separate contracts implement an
+optional OpenCV Haar largest-face crop with full-frame fallback and frame-level caches
+for trainable temporal attention. No missing or corrupt video is replaced with fabricated
 features.
 
 ## Reproducibility contract
@@ -25,6 +26,10 @@ features.
 - Temporal aggregation: arithmetic mean over valid sampled frames
 - Inference: float16 on CUDA; cache: float32
 - Face crop: disabled
+
+The baseline values above are not silently changed. Temporal attention stores the valid
+`frame_embeddings` matrix and learns attention inside the classifier. Face-crop mode
+records detected/fallback counts and requires the optional `vision` dependency.
 
 The cache contract includes the manifest hash, requested and resolved model revisions,
 sampling policy, frame count, pooling, precision, face-crop flag, and embedding
@@ -92,5 +97,6 @@ SigLIP checkpoint. These keys do not indicate missing vision weights.
 - Uniform sampling is a reproducible low-compute baseline, not an optimal temporal model.
 - Mean brightness and gradient energy are quality diagnostics, not validated face-quality
   estimates.
-- A later controlled study should compare full frames with face crops, mean pooling with
-  temporal attention, and SigLIP with a verified facial-expression encoder.
+- The registered controlled study compares full frame/face crop and mean/temporal
+  attention using separate immutable caches. A facial-expression-specific encoder is
+  still an optional future representation comparison, not a core requirement.

@@ -46,3 +46,57 @@ def test_parameter_matched_separate_emotion_adapters():
     network = TrimodalEmotionModel(DIMS, 4, ["en"], ["a"], 16, 24, 4, 0.0, "concat", False)
     output = network(inputs(1), torch.ones(1, 3, dtype=torch.bool), ["en"], ["a"], torch.ones(1, 3))
     assert output["logits"].shape == (1, 4)
+
+
+def test_frame_level_visual_temporal_attention_masks_padding():
+    network = TrimodalEmotionModel(
+        DIMS,
+        4,
+        ["en"],
+        ["a"],
+        16,
+        24,
+        4,
+        0.0,
+        visual_temporal_pooling="attention",
+        temporal_attention_hidden=8,
+    )
+    values = inputs(2)
+    values["visual"] = torch.randn(2, 5, DIMS["visual"])
+    temporal_mask = torch.tensor(
+        [[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]], dtype=torch.bool
+    )
+    output = network(
+        values,
+        torch.ones(2, 3, dtype=torch.bool),
+        ["en", "en"],
+        ["a", "a"],
+        torch.ones(2, 3),
+        {"visual": temporal_mask},
+    )
+    weights = output["temporal_weights"]["visual"]
+    assert weights.shape == (2, 5)
+    assert torch.allclose(weights.sum(dim=1), torch.ones(2))
+    assert torch.equal(weights[0, 3:], torch.zeros(2))
+
+
+def test_parameter_matched_shared_adapter_budget_is_close():
+    routed = TrimodalEmotionModel(
+        DIMS, 4, ["en"], ["a"], 256, 512, 64, 0.0, "reliability"
+    )
+    shared = TrimodalEmotionModel(
+        DIMS,
+        4,
+        ["en"],
+        ["a"],
+        256,
+        512,
+        64,
+        0.0,
+        "reliability",
+        use_routed_adapters=False,
+        emotion_adapter_bottleneck=327,
+    )
+    routed_count = int(parameter_counts(routed)["trainable"])
+    shared_count = int(parameter_counts(shared)["trainable"])
+    assert abs(routed_count - shared_count) / routed_count < 0.001
