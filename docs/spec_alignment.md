@@ -11,10 +11,10 @@ The two Word documents define an English-Mandarin audio-and-transcript study:
 - P2: P1 plus Prototypical Networks;
 - P3: P2 plus a supervised contrastive objective.
 
-P1/P2/P3 are now executable on verified cached embeddings. The current configurations
-use CREMA-D only, however, because no approved multilingual dataset, paper manifest, or
-cross-corpus cache contract is present. They validate software behavior but cannot
-establish multilingual or unseen-corpus claims.
+P1/P2/P3 are executable on verified cached embeddings. CREMA-D caches and engineering
+configs are complete, and the approved EmotionTalk Mandarin audio-text converter is now
+present. EmotionTalk caches and cross-corpus experiment configs are not yet complete,
+so current runs still cannot establish multilingual or unseen-corpus claims.
 
 ## Reusable framework track
 
@@ -36,6 +36,7 @@ visual branch. The descriptive configuration is
 
 All current CREMA-D runs are pilot or engineering diagnostics. They are single-corpus,
 English-only, and use twelve fixed prompted transcripts. They must remain marked
-`paper_ready: false`. Paper-facing claims require a multilingual protocol, repeated
-seeds, parameter-fair baselines, approved English-Mandarin data, and an unseen-corpus
-protocol. The CREMA-D P1/P2/P3 files are deliberately marked engineering diagnostics.
+`paper_ready: false`. Paper-facing claims still require EmotionTalk cache extraction,
+a frozen cross-corpus protocol, repeated seeds, parameter-fair baselines, and explicit
+language-corpus confounding analysis. The CREMA-D P1/P2/P3 files are deliberately
+marked engineering diagnostics.

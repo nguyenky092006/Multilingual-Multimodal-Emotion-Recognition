@@ -179,6 +179,7 @@ def _metadata_quality(
             value = float(sample.asr_confidence)
         elif (sample.transcript_source or "").lower() in {
             "gold", "manual", "provided", "scripted", "official_prompt",
+            "official_audio_transcript",
         }:
             value = 1.0
         else:

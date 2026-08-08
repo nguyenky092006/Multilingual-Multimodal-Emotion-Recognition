@@ -1,0 +1,43 @@
+experiment_name: emotiontalk_pilot_baseline_audio_text_concat_seed17
+track: paper_audio_text_diagnostic
+pilot: true
+diagnostic: true
+seed: 17
+device: cuda
+epochs: 30
+early_stopping_patience: 7
+batch_size: 64
+learning_rate: 0.001
+weight_decay: 0.0001
+use_class_weights: true
+modality_dropout: 0.0
+output_dir: outputs/emotiontalk_pilot/baselines/audio_text_concat_seed17
+labels_path: configs/data/labels.yaml
+data:
+  synthetic: false
+  manifest_path: data/manifests/emotiontalk_pilot.jsonl
+  enabled_modalities: [audio, text]
+  quality_policy: validated_metadata_v1
+  input_dims:
+    audio: 1024
+    text: 1024
+  caches:
+    audio:
+      index_path: data/cache/audio/emotiontalk_pilot_xlsr300m_chunk12s/index.jsonl
+      contract_path: data/cache/audio/emotiontalk_pilot_xlsr300m_chunk12s/cache_contract.json
+    text:
+      index_path: data/cache/text/emotiontalk_pilot_qwen3_embedding_0.6b/indexes/emotiontalk_pilot.jsonl
+      contract_path: data/cache/text/emotiontalk_pilot_qwen3_embedding_0.6b/cache_contract.json
+      summary_path: data/cache/text/emotiontalk_pilot_qwen3_embedding_0.6b/summaries/emotiontalk_pilot.json
+model:
+  d_model: 64
+  projection_hidden: 128
+  adapter_bottleneck: 16
+  dropout: 0.1
+  fusion: concat
+  use_modality_adapters: false
+  emotion_adapter_mode: none
+  use_routed_adapters: false
+  routing_alpha: 0.5
+  languages: [zh]
+  corpora: [emotiontalk]

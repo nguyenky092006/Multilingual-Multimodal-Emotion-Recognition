@@ -1,0 +1,25 @@
+dataset: EmotionTalk
+dataset_root: data/raw/emotiontalk
+output_dir: data/manifests
+seed: 17
+split_ratios: [0.70, 0.15, 0.15]
+pilot_samples_per_class:
+  train: 64
+  validation: 16
+  test: 16
+label_policy:
+  target_source: Audio.emotion_result
+  transcript_source: Audio.content
+  include:
+    angry: angry
+    happy: happy
+    neutral: neutral
+    sad: sad
+  exclude: [disgusted, fearful, surprised]
+split_policy:
+  group_by: connected speaker components induced by shared dialogue
+  protect_source_group: true
+  optimise_by: four-class sample count
+text_archive_policy:
+  use_as_target: false
+  reason: modality-specific Text labels disagree with Audio labels and would change the task

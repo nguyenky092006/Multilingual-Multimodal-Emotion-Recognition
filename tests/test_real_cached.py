@@ -46,7 +46,7 @@ def _write_fixture(root: Path, speaker_leakage: bool = False):
                     "corpus": "fixture",
                     "split": split,
                     "duration": 2.0,
-                    "transcript_source": "official_prompt",
+                    "transcript_source": "official_audio_transcript",
                     "asr_confidence": None,
                     "audio_available": True,
                     "text_available": True,

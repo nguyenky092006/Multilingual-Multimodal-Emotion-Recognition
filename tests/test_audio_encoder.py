@@ -11,6 +11,7 @@ import torch
 from safetensors import safe_open
 
 from mmer.encoders.audio import (
+    _duration_weighted_segment_mean,
     AudioCacheInput,
     cache_audio_embeddings,
     attentive_statistics,
@@ -18,6 +19,7 @@ from mmer.encoders.audio import (
     masked_statistics,
     read_pcm16_mono,
 )
+from mmer.config import load_yaml
 
 
 def _write_wav(
@@ -95,6 +97,26 @@ def test_masked_mean_excludes_padding():
     attentive = attentive_statistics(hidden, mask)
     assert statistics.shape == attentive.shape == (1, 4)
     assert torch.isfinite(statistics).all() and torch.isfinite(attentive).all()
+
+
+def test_chunk_embeddings_are_weighted_by_segment_duration():
+    pooled = torch.tensor([[1.0, 2.0], [5.0, 6.0], [20.0, 30.0]])
+    combined = _duration_weighted_segment_mean(
+        pooled,
+        segment_owners=[0, 0, 1],
+        segment_lengths=[3, 1, 2],
+        owner_count=2,
+    )
+    assert torch.equal(combined, torch.tensor([[2.0, 3.0], [20.0, 30.0]]))
+
+
+def test_emotiontalk_audio_config_preserves_long_clips_by_chunking():
+    root = Path(__file__).resolve().parents[1]
+    config = load_yaml(root / "configs" / "encoder" / "emotiontalk_xlsr_chunk12s.yaml")["audio"]
+    assert config["duration_policy"] == "chunk"
+    assert config["max_duration_seconds"] == 12.0
+    assert config["chunk_overlap_seconds"] == 0.0
+    assert config["pooling"] == "masked_mean"
 
 
 def test_audio_cache_is_safe_and_resumable(tmp_path: Path):

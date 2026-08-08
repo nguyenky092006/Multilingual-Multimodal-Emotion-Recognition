@@ -24,7 +24,7 @@ experiment has already been run or supports a scientific claim.
 
 | Item | Why it is not complete evidence |
 | --- | --- |
-| English-Mandarin comparison | Only CREMA-D is present locally; an approved Mandarin corpus has not been added. |
+| English-Mandarin comparison | EmotionTalk audio/text is present and has a tested Mandarin converter, but its frozen caches and parameter-fair English-Mandarin runs have not been executed. Language remains confounded with corpus. |
 | Unseen-corpus adaptation result | Requires at least one held-out target corpus. The runner rejects overlap when `require_unseen_test_corpus` is enabled. |
 | Gold-vs-ASR ablation | Requires paired gold and ASR transcripts for the same samples; none are fabricated. |
 | Full visual ablation results | Frame-level and face-crop caches must be extracted under their dedicated contracts before training. |

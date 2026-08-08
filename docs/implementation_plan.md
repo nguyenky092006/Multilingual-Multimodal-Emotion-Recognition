@@ -23,6 +23,12 @@
   tensors.
 - Historical seed-17 audio, text, visual, audio-visual, and trimodal diagnostics.
 - Clear separation between the audio-text paper specification and trimodal framework.
+- Verified EmotionTalk Audio extraction (19,250 JSON/WAV pairs) and a four-class
+  Mandarin audio-text converter with connected-component speaker/source splits.
+- Verified 384-sample EmotionTalk pilot XLS-R/Qwen3 caches and executable audio, text,
+  concatenation, and P1 reliability diagnostic configurations.
+- Verified full 16,413-sample EmotionTalk XLS-R/Qwen3 caches and registered full
+  audio/text/concat plus P1/P2/P3 engineering configurations.
 
 ## Completed supervised framework components
 
@@ -48,9 +54,9 @@
 
 ## Remaining paper work
 
-- Add legally obtained English/Mandarin corpora and corpus converters; no current code
-  fabricates or downloads unapproved research data.
-- Establish speaker/source-video groups and actual source/target corpus tasks.
+- Cache the approved EmotionTalk Mandarin audio/text embeddings under frozen contracts.
+- Register parameter-fair CREMA-D/EmotionTalk source/target tasks while reporting that
+  English and Mandarin are confounded with corpus.
 - Extract the optional ablation caches, then execute the registered matrix for seeds
   17/23/41 and report mean/std/CI.
 - Add paired gold/ASR transcripts before executing that specific ablation.

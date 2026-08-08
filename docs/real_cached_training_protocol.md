@@ -110,5 +110,6 @@ parameter counts, split/speaker/label/language/corpus counts, unique transcripts
 software versions, and diagnostic collapse flags. Evaluation refuses a checkpoint when
 its model, labels, manifest, or cache contracts differ from the active configuration.
 
-Paper-facing work still requires approved multilingual/cross-corpus datasets and actual
-execution of the completed parameter-fair, episodic, ablation, and repeated-seed paths.
+Paper-facing work still requires EmotionTalk cache extraction, frozen cross-corpus
+tasks, and actual execution of the completed parameter-fair, episodic, ablation, and
+repeated-seed paths.

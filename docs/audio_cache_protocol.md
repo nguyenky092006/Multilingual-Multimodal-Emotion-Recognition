@@ -10,7 +10,8 @@ and channel count are retained in cache metadata.
 Each variable-length hidden sequence is pooled with a feature-level padding mask. The
 baseline uses masked mean. The registered encoder ablation supports masked statistics or
 deterministic energy-attentive statistics, optional hidden-layer selection, and explicit
-reject/truncate/chunk policies for long clips. Chunk outputs are duration-weighted. The
+reject/truncate/chunk policies for long clips. Chunk outputs are duration-weighted, so a
+short final chunk does not receive the same weight as a full chunk. The
 encoder stays frozen; CUDA inference uses float16 and caches are float32.
 
 One SafeTensor file is written atomically per sample. Its metadata records the source path
@@ -31,3 +32,8 @@ The second command is the explicitly approved canary and may download approximat
 The third command reuses locally cached weights and the first 16 verified embeddings, then
 completes the 648-sample pilot. Full-manifest extraction requires a separate output directory
 and a separate approval after pilot inspection.
+
+EmotionTalk contains clips longer than the 12-second CREMA-D rejection threshold. Its
+dedicated `configs/encoder/emotiontalk_xlsr_chunk12s.yaml` contract preserves the full
+waveform in non-overlapping chunks and combines chunk embeddings by sample duration.
+It must use a separate cache directory from every reject/truncate contract.

@@ -40,5 +40,6 @@ python scripts/train.py --config configs/experiment/cremad_full_framework_p2_met
 CREMA-D contains one English corpus and a small set of prompted transcript strings.
 Consequently these configurations are diagnostic (`paper_ready: false`). They test the
 complete execution path, not multilingual negative transfer or adaptation to an unseen
-corpus. Paper-facing results still require approved English-Mandarin source corpora, a
-held-out target corpus, at least three seeds, and parameter-fair baselines.
+corpus. EmotionTalk now supplies an approved Mandarin conversion, but paper-facing
+results still require its frozen caches, a held-out target corpus, at least three seeds,
+and parameter-fair baselines.

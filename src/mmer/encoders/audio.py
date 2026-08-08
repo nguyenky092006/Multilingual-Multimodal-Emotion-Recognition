@@ -184,6 +184,36 @@ def _chunk_waveform(
     return [chunk for chunk in chunks if chunk.size > 0]
 
 
+def _duration_weighted_segment_mean(
+    segment_pooled: Tensor,
+    segment_owners: Sequence[int],
+    segment_lengths: Sequence[int],
+    owner_count: int,
+) -> Tensor:
+    """Combine chunk embeddings without over-weighting a short final chunk."""
+
+    if segment_pooled.ndim != 2:
+        raise ValueError("segment_pooled must have shape [segments, dimension]")
+    if len(segment_owners) != len(segment_lengths) or len(segment_owners) != segment_pooled.shape[0]:
+        raise ValueError("segment owner/length metadata does not match pooled embeddings")
+    if owner_count <= 0 or any(length <= 0 for length in segment_lengths):
+        raise ValueError("owner_count and every segment length must be positive")
+    rows: list[Tensor] = []
+    for owner in range(owner_count):
+        indices = [index for index, value in enumerate(segment_owners) if value == owner]
+        if not indices:
+            raise ValueError(f"owner {owner} has no pooled audio segment")
+        index_tensor = torch.tensor(indices, device=segment_pooled.device)
+        selected = segment_pooled[index_tensor]
+        weights = torch.tensor(
+            [segment_lengths[index] for index in indices],
+            dtype=selected.dtype,
+            device=selected.device,
+        )
+        rows.append((selected * weights.unsqueeze(-1)).sum(dim=0) / weights.sum())
+    return torch.stack(rows)
+
+
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -382,6 +412,7 @@ def cache_audio_embeddings(
         source_paths: list[Path] = []
         segment_waveforms: list[np.ndarray] = []
         segment_owners: list[int] = []
+        segment_lengths: list[int] = []
         segment_counts: list[int] = []
         for item in batch_inputs:
             source = (root / item.audio_path).resolve()
@@ -408,6 +439,7 @@ def cache_audio_embeddings(
             owner = len(signals) - 1
             segment_waveforms.extend(segments)
             segment_owners.extend([owner] * len(segments))
+            segment_lengths.extend(int(segment.size) for segment in segments)
             segment_counts.append(len(segments))
         encoded = feature_extractor(
             segment_waveforms,
@@ -445,16 +477,12 @@ def cache_audio_embeddings(
             segment_pooled = pool_hidden(
                 hidden, _feature_mask(model, hidden, attention_mask), pooling
             )
-        sample_rows = [
-            segment_pooled[
-                torch.tensor(
-                    [index for index, value in enumerate(segment_owners) if value == owner],
-                    device=segment_pooled.device,
-                )
-            ].mean(dim=0)
-            for owner in range(len(signals))
-        ]
-        pooled = torch.stack(sample_rows).detach().float().cpu()
+        pooled = _duration_weighted_segment_mean(
+            segment_pooled,
+            segment_owners,
+            segment_lengths,
+            len(signals),
+        ).detach().float().cpu()
         if pooled.ndim != 2 or pooled.shape[0] != len(batch_inputs):
             raise RuntimeError(f"unexpected pooled embedding shape: {tuple(pooled.shape)}")
         if not torch.isfinite(pooled).all():

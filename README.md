@@ -8,6 +8,8 @@ non-empty subset without creating modules or requiring caches for disabled modal
 
 - JSONL manifests with explicit availability and leakage validation.
 - Speaker-exclusive CREMA-D full (64/14/13 actors) and pilot (8/2/2 actors) protocols.
+- Leakage-safe Mandarin EmotionTalk audio-text conversion using connected speaker
+  components and protected source groups.
 - Frozen XLS-R audio, Qwen3 text, and SigLIP visual SafeTensor caches.
 - Modality projections, optional modality/emotion adapters, optional language/corpus
   routing, masked concatenation, and reliability-aware fusion.
@@ -24,9 +26,10 @@ non-empty subset without creating modules or requiring caches for disabled modal
   weight and contribute no model parameters.
 
 The framework code is complete for the requested independent-utterance MMER scope.
-Multilingual/unseen-corpus conclusions remain blocked until approved Mandarin and
-cross-corpus data are added and the registered runs are actually executed. Federated
-learning and conversational ERC are outside the current scope.
+An approved Mandarin EmotionTalk converter is present, but multilingual/unseen-corpus
+conclusions remain blocked until its caches, cross-corpus experiment configs, and the
+registered repeated-seed runs are completed. Federated learning and conversational ERC
+are outside the current scope.
 
 The two Word documents describe an audio-text paper, while the later implementation
 prompt defines a reusable trimodal framework. Their naming and evidence boundaries are
@@ -66,6 +69,49 @@ python scripts/build_cremad_manifest.py
 
 The approved mapping keeps `ANG/HAP/NEU/SAD` as angry/happy/neutral/sad and excludes
 `DIS/FEA` instead of merging them. See `docs/cremad_protocol.md`.
+
+## EmotionTalk manifests
+
+With the approved EmotionTalk `Audio.tar` extracted at `data/raw/emotiontalk/Audio`:
+
+```powershell
+python scripts/build_emotiontalk_manifest.py
+```
+
+The Mandarin audio-text protocol uses `Audio.emotion_result` as its target and the
+matching `Audio.content` transcript. It keeps angry/happy/neutral/sad, excludes the
+other three labels without merging, and assigns whole connected speaker/source groups
+before sampling. `Text.tar` labels are not mixed into the target. See
+`docs/emotiontalk_protocol.md`.
+
+EmotionTalk audio contains clips longer than 12 seconds. Use its dedicated preserving
+chunk contract and a dataset-specific output directory:
+
+```powershell
+python scripts/cache_audio_embeddings.py --config configs/encoder/emotiontalk_xlsr_chunk12s.yaml --manifest data/manifests/emotiontalk_pilot.jsonl --output-dir data/cache/audio/emotiontalk_pilot_xlsr300m_chunk12s
+```
+
+After both pilot caches are complete, the parameter-light audio-text baseline is:
+
+```powershell
+python scripts/train.py --config configs/experiment/emotiontalk_pilot_baseline_audio_text_concat.yaml
+python scripts/evaluate.py --config configs/experiment/emotiontalk_pilot_baseline_audio_text_concat.yaml
+```
+
+Audio-only, text-only, and P1 reliability diagnostics are registered alongside it. All
+EmotionTalk pilot outputs remain `paper_ready: false`.
+
+The full Mandarin engineering matrix is registered after both full caches are complete:
+
+```powershell
+python scripts/train.py --config configs/experiment/emotiontalk_full_baseline_audio_text_concat.yaml
+python scripts/evaluate.py --config configs/experiment/emotiontalk_full_baseline_audio_text_concat.yaml
+python scripts/train.py --config configs/experiment/emotiontalk_full_p3_meta.yaml
+python scripts/evaluate.py --config configs/experiment/emotiontalk_full_p3_meta.yaml
+```
+
+See `docs/emotiontalk_full_audio_text_protocol.md` for all six configurations and the
+language-corpus confounding boundary.
 
 ## Frozen encoder caches
 
